@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -950,14 +953,58 @@ class _CategoryFilesPageState extends State<CategoryFilesPage> {
 
   Future<void> _openFileUrl(String fileUrl) async {
     try {
-      if (await canLaunch(fileUrl)) {
-        await launch(fileUrl);
-        context.showSuccess('Dosya başarıyla açıldı');
+      // Android'de permission kontrolü
+      if (Platform.isAndroid) {
+        // Android 13+ için yeni izinler
+        if (await Permission.photos.isDenied) {
+          await Permission.photos.request();
+        }
+        if (await Permission.videos.isDenied) {
+          await Permission.videos.request();
+        }
+
+        // Android 11+ için MANAGE_EXTERNAL_STORAGE izni
+        if (await Permission.manageExternalStorage.isDenied) {
+          await Permission.manageExternalStorage.request();
+        }
+
+        // Eski Android sürümleri için
+        if (await Permission.storage.isDenied) {
+          await Permission.storage.request();
+        }
+      }
+
+      final uri = Uri.parse(fileUrl);
+      print('Açılmaya çalışılan URL: $fileUrl'); // Debug için
+
+      if (await canLaunchUrl(uri)) {
+        bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalApplication, // Dış uygulamada aç
+        );
+
+        if (launched) {
+          context.showSuccess('Dosya başarıyla açıldı');
+        } else {
+          context.showError('Dosya açılamadı');
+        }
       } else {
-        context.showError('Dosya açılamadı');
+        // Alternatif olarak browser'da açmayı dene
+        bool launched = await launchUrl(
+          uri,
+          mode: LaunchMode.externalNonBrowserApplication,
+        );
+
+        if (!launched) {
+          // Son çare olarak browser'da aç
+          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+          context.showSuccess('Dosya tarayıcıda açıldı');
+        } else {
+          context.showSuccess('Dosya başarıyla açıldı');
+        }
       }
     } catch (e) {
-      context.showError('Dosya açılırken hata oluştu');
+      print('Dosya açma hatası: $e'); // Debug için
+      context.showError('Dosya açılırken hata oluştu: ${e.toString()}');
     }
-  }
-}
+  }}

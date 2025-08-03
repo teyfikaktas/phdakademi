@@ -4,31 +4,27 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/roadmap_category.dart';
+import '../models/roadmap_level.dart';
 import '../models/roadmap_step.dart';
 
 /// RoadmapRepository - API işlemlerini yöneten sınıf
 ///
 /// Bu sınıf tüm roadmap ile ilgili backend işlemlerini yapar:
-/// - Kategorileri getir
-/// - Adımları tamamla
+/// - Kategorileri getir (levels yapısı ile)
+/// - Adımları başlat/tamamla
+/// - Günlük comment ekleme
 /// - İlerleme takibi
-/// - Todo listesi yönetimi
 class RoadmapRepository {
   // SharedPreferences'ta token'ın key'i
   static const String _tokenKey = 'auth_token';
 
   /// Token'ı SharedPreferences'tan al
-  ///
-  /// Returns: Kullanıcının auth token'ı veya null
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_tokenKey);
   }
 
   /// HTTP header'larını oluştur
-  ///
-  /// [token] - Bearer token
-  /// Returns: API için gerekli header'lar
   Map<String, String> _getHeaders(String token) {
     return {
       'Authorization': 'Bearer $token',
@@ -37,22 +33,34 @@ class RoadmapRepository {
     };
   }
 
-  /// Tüm roadmap kategorilerini getir
+  /// Tüm roadmap kategorilerini getir (levels yapısı ile)
   ///
   /// Bu method:
   /// 1. Token'ı al
-  /// 2. API'ye GET request at
-  /// 3. Response'u parse et
+  /// 2. API'ye GET request at (/roadmap)
+  /// 3. Response'u parse et (levels array'i ile)
   /// 4. RoadmapCategory listesi döndür
   ///
-  /// Throws: Exception - Token yoksa, API hatası varsa
+  /// Backend Response Format:
+  /// {
+  ///   "success": true,
+  ///   "data": [
+  ///     {
+  ///       "id": 1,
+  ///       "title": "İngilizce",
+  ///       "levels": [
+  ///         {
+  ///           "id": 1,
+  ///           "title": "1. Aşama",
+  ///           "order": 1,
+  ///           "steps": [...]
+  ///         }
+  ///       ]
+  ///     }
+  ///   ]
+  /// }
   Future<List<RoadmapCategory>> getRoadmapCategories() async {
     try {
-      // MOCK DATA İÇİN:
-      await Future.delayed(Duration(milliseconds: 1500));
-
-
-
       // 1. Token kontrolü
       final token = await _getToken();
       if (token == null) {
@@ -78,7 +86,7 @@ class RoadmapRepository {
         final data = json.decode(response.body);
 
         if (data['success'] == true) {
-          // 4. JSON'dan model'e dönüştür
+          // 4. JSON'dan model'e dönüştür (levels yapısı ile)
           return (data['data'] as List)
               .map((item) => RoadmapCategory.fromJson(item))
               .toList();
@@ -105,152 +113,55 @@ class RoadmapRepository {
     }
   }
 
-  /// Mock data - API hazır olmadığı için test amaçlı
-  List<RoadmapCategory> _getMockData() {
-    return [
-      RoadmapCategory(
-        id: 1,
-        title: "Reading Skills",
-        description: "Okuma becerilerini geliştir",
-        steps: [
-          RoadmapStep(
-            id: 1,
-            title: "Temel Kelime Bilgisi",
-            description: "Günlük 50 kelime öğren",
-            categoryId: 1,
-            levelId: 1,
-            order: 1,
-            isCompleted: true,
-            completedAt: DateTime.now().subtract(Duration(days: 2)),
-          ),
-          RoadmapStep(
-            id: 2,
-            title: "Hızlı Okuma Teknikleri",
-            description: "Okuma hızını artır",
-            categoryId: 1,
-            levelId: 1,
-            order: 2,
-            isCompleted: false,
-          ),
-          RoadmapStep(
-            id: 3,
-            title: "Anlam Çıkarma",
-            description: "Metinden anlam çıkarma pratiği",
-            categoryId: 1,
-            levelId: 1,
-            order: 3,
-            isCompleted: false,
-          ),
-        ],
-      ),
-      RoadmapCategory(
-        id: 2,
-        title: "Writing Skills",
-        description: "Yazma becerilerini geliştir",
-        steps: [
-          RoadmapStep(
-            id: 4,
-            title: "Temel Gramer",
-            description: "Temel gramer kuralları",
-            categoryId: 2,
-            levelId: 1,
-            order: 1,
-            isCompleted: true,
-            completedAt: DateTime.now().subtract(Duration(days: 1)),
-          ),
-          RoadmapStep(
-            id: 5,
-            title: "Paragraf Yazma",
-            description: "Düzenli paragraf yazma",
-            categoryId: 2,
-            levelId: 1,
-            order: 2,
-            isCompleted: false,
-          ),
-        ],
-      ),
-      RoadmapCategory(
-        id: 3,
-        title: "Speaking Practice",
-        description: "Konuşma pratiği yap",
-        steps: [
-          RoadmapStep(
-            id: 6,
-            title: "Telaffuz Egzersizleri",
-            description: "Doğru telaffuz pratiği",
-            categoryId: 3,
-            levelId: 1,
-            order: 1,
-            isCompleted: false,
-          ),
-          RoadmapStep(
-            id: 7,
-            title: "Günlük Konuşma",
-            description: "Günlük konuşma pratiği",
-            categoryId: 3,
-            levelId: 1,
-            order: 2,
-            isCompleted: false,
-          ),
-        ],
-      ),
-    ];
-  }
-
-  /// Belirli bir kategorinin detaylarını getir
+  /// ✅ YENİ: Adımı başlat
   ///
-  /// [categoryId] - Kategori ID'si
-  /// Returns: RoadmapCategory - Detaylı kategori bilgisi
-  Future<RoadmapCategory> getCategoryDetails(int categoryId) async {
+  /// Backend API: POST /roadmap/start-step
+  /// Request: { "step_id": 123, "category_id": 45 }
+  /// Response: { "success": true, "data": {...} }
+  Future<bool> startStep(int stepId, int categoryId) async {
     try {
       final token = await _getToken();
       if (token == null) {
         throw Exception('Token bulunamadı');
       }
 
-      final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/category/$categoryId'),
+      final requestBody = {
+        'step_id': stepId,
+        'category_id': categoryId,
+      };
+
+      debugPrint('Starting step: $requestBody');
+
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/start-step'),
         headers: _getHeaders(token),
+        body: json.encode(requestBody),
       );
+
+      debugPrint('Start step response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        if (data['success'] == true) {
-          return RoadmapCategory.fromJson(data['data']);
-        } else {
-          throw Exception(data['message'] ?? 'Kategori bulunamadı');
-        }
+        return data['success'] == true;
       } else {
-        throw Exception('Sunucu hatası: ${response.statusCode}');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Adım başlatılamadı');
       }
     } catch (e) {
-      throw Exception('Kategori detay hatası: $e');
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Adım başlatma hatası: $e');
     }
   }
 
-  /// Bir adımı tamamlanmış olarak işaretle
+  /// ✅ YENİ: Adımı tamamla
   ///
-  /// [stepId] - Adım ID'si
-  /// [categoryId] - Kategori ID'si
-  /// [comment] - Opsiyonel yorum
-  ///
-  /// Returns: bool - İşlem başarılı mı?
-  ///
-  /// Backend'e şu veri gönderilir:
-  /// {
-  ///   "step_id": 123,
-  ///   "category_id": 45,
-  ///   "comment": "Tamamladım!",
-  ///   "status": 1
-  /// }
+  /// Backend API: POST /roadmap/complete-step
+  /// Request: { "step_id": 123, "category_id": 45, "comment": "..." }
+  /// Response: { "success": true, "data": {...} }
   Future<bool> completeStep(int stepId, int categoryId, {String? comment}) async {
     try {
-      // MOCK DATA - UI testi için
-      await Future.delayed(Duration(milliseconds: 800));
-      debugPrint('MOCK: Step $stepId tamamlandı. Yorum: ${comment ?? "yok"}');
-      return true; // Her zaman başarılı
-
-      /* GERÇEK API İÇİN:
       final token = await _getToken();
       if (token == null) {
         throw Exception('Token bulunamadı');
@@ -259,12 +170,13 @@ class RoadmapRepository {
       final requestBody = <String, dynamic>{
         'step_id': stepId,
         'category_id': categoryId,
-        'status': 1, // 1 = Tamamlandı
       };
 
       if (comment != null && comment.isNotEmpty) {
         requestBody['comment'] = comment;
       }
+
+      debugPrint('Completing step: $requestBody');
 
       final response = await http.post(
         Uri.parse('${ApiConstants.baseUrl}/roadmap/complete-step'),
@@ -272,69 +184,224 @@ class RoadmapRepository {
         body: json.encode(requestBody),
       );
 
+      debugPrint('Complete step response: ${response.statusCode} - ${response.body}');
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception('Tamamlama hatası: ${response.statusCode}');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Adım tamamlanamadı');
       }
-      */
     } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
       throw Exception('Adım tamamlama hatası: $e');
     }
   }
 
-  /// Adımı todo listesine ekle (başlatılmış ama tamamlanmamış)
+  /// ✅ YENİ: Günlük comment ekleme
   ///
-  /// [stepId] - Adım ID'si
-  /// [categoryId] - Kategori ID'si
-  /// [comment] - Opsiyonel yorum
-  ///
-  /// Backend'e status: 0 gönderilir (başlatıldı ama tamamlanmadı)
-  Future<bool> addStepToTodo(int stepId, int categoryId, {String? comment}) async {
+  /// Backend API: POST /roadmap/add-daily-comment
+  /// Request: { "step_id": 123, "comment": "Bugün şunu yaptım..." }
+  /// Response: { "success": true, "data": {...} }
+  Future<bool> addDailyComment(int stepId, String comment) async {
     try {
       final token = await _getToken();
       if (token == null) {
         throw Exception('Token bulunamadı');
       }
 
-      final requestBody = <String, dynamic>{
+      final requestBody = {
         'step_id': stepId,
-        'category_id': categoryId,
-        'status': 0, // 0 = Başlatıldı ama tamamlanmadı
+        'comment': comment,
       };
 
-      if (comment != null && comment.isNotEmpty) {
-        requestBody['comment'] = comment;
-      }
+      debugPrint('Adding daily comment: $requestBody');
 
       final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/add-todo'),
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/add-daily-comment'),
         headers: _getHeaders(token),
         body: json.encode(requestBody),
       );
+
+      debugPrint('Daily comment response: ${response.statusCode} - ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return data['success'] == true;
       } else {
-        throw Exception('Todo ekleme hatası: ${response.statusCode}');
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Yorum eklenemedi');
       }
     } catch (e) {
-      throw Exception('Todo ekleme hatası: $e');
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Günlük yorum hatası: $e');
     }
   }
 
-  /// Kullanıcının genel ilerleme özetini getir
+  /// ✅ YENİ: Adımın comment geçmişini getir
   ///
-  /// Returns: Map - İlerleme bilgileri
-  /// {
-  ///   "total_categories": 5,
-  ///   "completed_categories": 2,
-  ///   "total_steps": 50,
-  ///   "completed_steps": 25,
-  ///   "progress_percentage": 50.0
-  /// }
+  /// Backend API: GET /roadmap/step-comments?step_id=123
+  /// Response: { "success": true, "data": [...] }
+  Future<List<Map<String, dynamic>>> getStepComments(int stepId) async {
+    try {
+      final token = await _getToken();
+      if (token == null) {
+        throw Exception('Token bulunamadı');
+      }
+
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/step-comments?step_id=$stepId'),
+        headers: _getHeaders(token),
+      );
+
+      debugPrint('Step comments response: ${response.statusCode} - ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return List<Map<String, dynamic>>.from(data['data']);
+        } else {
+          throw Exception(data['message'] ?? 'Yorumlar alınamadı');
+        }
+      } else {
+        throw Exception('Sunucu hatası: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (e is Exception) {
+        rethrow;
+      }
+      throw Exception('Yorum geçmişi hatası: $e');
+    }
+  }
+
+  /// ✅ GÜNCELLENMIS: Mock data - levels yapısı ile test amaçlı
+  List<RoadmapCategory> _getMockData() {
+    return [
+      RoadmapCategory(
+        id: 1,
+        title: "İngilizce Programı",
+        description: "Temel seviyeden ileri seviyeye İngilizce öğrenin",
+        levels: [
+          RoadmapLevel(
+            id: 1,
+            title: "1. Aşama - Temel Seviye",
+            description: "Temel gramer ve kelime bilgisi",
+            order: 1,
+            steps: [
+              RoadmapStep(
+                id: 1,
+                title: "Temel Kelime Bilgisi",
+                description: "Günlük 50 kelime öğren",
+                categoryId: 1,
+                levelId: 1,
+                order: 1,
+                status: 'completed',
+                isCompleted: true,
+                completedAt: DateTime.now().subtract(Duration(days: 2)),
+              ),
+              RoadmapStep(
+                id: 2,
+                title: "Basit Cümleler",
+                description: "Temel cümle yapıları öğren",
+                categoryId: 1,
+                levelId: 1,
+                order: 2,
+                status: 'in_progress',
+                isInProgress: true,
+                canAddDailyComment: true,
+                startedAt: DateTime.now().subtract(Duration(hours: 6)),
+              ),
+              RoadmapStep(
+                id: 3,
+                title: "Günlük Diyaloglar",
+                description: "Günlük konuşma pratikleri",
+                categoryId: 1,
+                levelId: 1,
+                order: 3,
+                status: 'not_started',
+              ),
+            ],
+          ),
+          RoadmapLevel(
+            id: 2,
+            title: "2. Aşama - Orta Seviye",
+            description: "Daha karmaşık gramer yapıları",
+            order: 2,
+            steps: [
+              RoadmapStep(
+                id: 4,
+                title: "Zaman Kipler",
+                description: "Geçmiş, şimdiki, gelecek zaman",
+                categoryId: 1,
+                levelId: 2,
+                order: 1,
+                status: 'not_started',
+              ),
+              RoadmapStep(
+                id: 5,
+                title: "Karmaşık Cümleler",
+                description: "Bağlaçlı ve yan cümleli yapılar",
+                categoryId: 1,
+                levelId: 2,
+                order: 2,
+                status: 'not_started',
+              ),
+            ],
+          ),
+        ],
+      ),
+      RoadmapCategory(
+        id: 2,
+        title: "Matematik Programı",
+        description: "Temel matematik becerilerini geliştirin",
+        levels: [
+          RoadmapLevel(
+            id: 3,
+            title: "1. Aşama - Sayılar",
+            description: "Sayı sistemleri ve temel işlemler",
+            order: 1,
+            steps: [
+              RoadmapStep(
+                id: 6,
+                title: "Doğal Sayılar",
+                description: "Doğal sayılar ve özellikleri",
+                categoryId: 2,
+                levelId: 3,
+                order: 1,
+                status: 'not_started',
+              ),
+              RoadmapStep(
+                id: 7,
+                title: "Dört İşlem",
+                description: "Toplama, çıkarma, çarpma, bölme",
+                categoryId: 2,
+                levelId: 3,
+                order: 2,
+                status: 'not_started',
+              ),
+            ],
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// Test amaçlı mock data kullan
+  Future<List<RoadmapCategory>> getRoadmapCategoriesMock() async {
+    await Future.delayed(Duration(milliseconds: 1500));
+    return _getMockData();
+  }
+
+  /// ✅ ARTIK GEREKSİZ: Eski methodlar kaldırıldı
+  /// - addStepToTodo() -> startStep() oldu
+  /// - completeStep() güncellendi
+
+  /// Kullanıcının genel ilerleme özetini getir
   Future<Map<String, dynamic>> getProgressSummary() async {
     try {
       final token = await _getToken();
@@ -343,7 +410,7 @@ class RoadmapRepository {
       }
 
       final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/progress'),
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/progress'),
         headers: _getHeaders(token),
       );
 
@@ -362,10 +429,35 @@ class RoadmapRepository {
     }
   }
 
+  /// Belirli bir kategorinin detaylarını getir
+  Future<RoadmapCategory> getCategoryDetails(int categoryId) async {
+    try {
+      final token = await _getToken();
+      if (token == null) {
+        throw Exception('Token bulunamadı');
+      }
+
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/category/$categoryId'),
+        headers: _getHeaders(token),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return RoadmapCategory.fromJson(data['data']);
+        } else {
+          throw Exception(data['message'] ?? 'Kategori bulunamadı');
+        }
+      } else {
+        throw Exception('Sunucu hatası: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Kategori detay hatası: $e');
+    }
+  }
+
   /// Belirli bir adımın detaylarını getir
-  ///
-  /// [stepId] - Adım ID'si
-  /// Returns: RoadmapStep - Adım detayları
   Future<RoadmapStep> getStepDetails(int stepId) async {
     try {
       final token = await _getToken();
@@ -374,7 +466,7 @@ class RoadmapRepository {
       }
 
       final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/step/$stepId'),
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/step/$stepId'),
         headers: _getHeaders(token),
       );
 
@@ -394,9 +486,6 @@ class RoadmapRepository {
   }
 
   /// Local ve server verilerini senkronize et
-  ///
-  /// Bu method offline yapılan değişiklikleri server'a gönderir
-  /// Returns: bool - Senkronizasyon başarılı mı?
   Future<bool> syncProgress() async {
     try {
       final token = await _getToken();
@@ -405,7 +494,7 @@ class RoadmapRepository {
       }
 
       final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/sync'),
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/sync'),
         headers: _getHeaders(token),
       );
 
@@ -420,109 +509,7 @@ class RoadmapRepository {
     }
   }
 
-  /// Adımı todo listesinden kaldır
-  ///
-  /// [stepId] - Kaldırılacak adım ID'si
-  /// Returns: bool - İşlem başarılı mı?
-  Future<bool> removeStepFromTodo(int stepId) async {
-    try {
-      final token = await _getToken();
-      if (token == null) {
-        throw Exception('Token bulunamadı');
-      }
-
-      final response = await http.delete(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/todo/$stepId'),
-        headers: _getHeaders(token),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['success'] == true;
-      } else {
-        throw Exception('Silme hatası: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Todo silme hatası: $e');
-    }
-  }
-
-  /// Tamamlanan adımların geçmişini getir
-  ///
-  /// Returns: List<RoadmapStep> - Tamamlanan adımlar kronolojik sırada
-  Future<List<RoadmapStep>> getCompletedStepsHistory() async {
-    try {
-      final token = await _getToken();
-      if (token == null) {
-        throw Exception('Token bulunamadı');
-      }
-
-      final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/completed'),
-        headers: _getHeaders(token),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          return (data['data'] as List)
-              .map((item) => RoadmapStep.fromJson(item))
-              .toList();
-        } else {
-          throw Exception(data['message'] ?? 'Geçmiş bulunamadı');
-        }
-      } else {
-        throw Exception('Geçmiş hatası: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Geçmiş alma hatası: $e');
-    }
-  }
-
-  /// Bugün önerilen adımları getir
-  ///
-  /// Backend AI/algoritma ile kullanıcıya günlük plan önerir
-  /// Returns: List<RoadmapStep> - Bugün yapılması önerilen adımlar
-  Future<List<RoadmapStep>> getTodaysSteps() async {
-    try {
-      final token = await _getToken();
-      if (token == null) {
-        throw Exception('Token bulunamadı');
-      }
-
-      final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/today'),
-        headers: _getHeaders(token),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          return (data['data'] as List)
-              .map((item) => RoadmapStep.fromJson(item))
-              .toList();
-        } else {
-          throw Exception(data['message'] ?? 'Günlük plan bulunamadı');
-        }
-      } else {
-        throw Exception('Günlük plan hatası: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Günlük plan hatası: $e');
-    }
-  }
-
   /// Kullanıcı istatistiklerini getir
-  ///
-  /// Returns: Map - Detaylı istatistikler
-  /// {
-  ///   "streak_days": 7,           // Kaç gündür sürekli çalışıyor
-  ///   "this_week_steps": 12,      // Bu hafta tamamlanan adım
-  ///   "this_month_steps": 45,     // Bu ay tamamlanan adım
-  ///   "total_study_time": 1200,   // Toplam çalışma süresi (dakika)
-  ///   "level": 3,                 // Kullanıcı seviyesi
-  ///   "badges": ["early_bird"]    // Kazanılan rozetler
-  /// }
   Future<Map<String, dynamic>> getUserStats() async {
     try {
       final token = await _getToken();
@@ -531,7 +518,7 @@ class RoadmapRepository {
       }
 
       final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/student/roadmap/stats'),
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/stats'),
         headers: _getHeaders(token),
       );
 

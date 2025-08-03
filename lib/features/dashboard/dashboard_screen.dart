@@ -284,14 +284,27 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   PreferredSizeWidget _buildAppBar(ThemeData theme, bool isDark) {
     return AppBar(
-      title: Text(
-        'PhD Akademi',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: _isMobile(context) ? 18 : 20,
-          color: theme.colorScheme.onSurface,
+      title: Container(
+        height: _isMobile(context) ? 40 : 48, // Boyut büyütüldü
+        child: Image.asset(
+          'assets/qrcode.png',
+          fit: BoxFit.contain,
+          // Hata durumunda fallback
+          errorBuilder: (context, error, stackTrace) {
+            print('Logo yüklenemedi: $error');
+            return Text(
+              'PhD Akademi',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: _isMobile(context) ? 20 : 24, // Yazı da büyütüldü
+                color: theme.colorScheme.onSurface,
+              ),
+            );
+          },
         ),
       ),
+      centerTitle: false, // Sola hizalandı
+      titleSpacing: _isMobile(context) ? 16 : 24, // Sol boşluk
       actions: [
         IconButton(
           icon: Icon(
@@ -312,9 +325,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         SizedBox(width: _isMobile(context) ? 8 : 16),
       ],
     );
-  }
-
-  Widget _buildBody(ThemeData theme, bool isDark) {
+  }  Widget _buildBody(ThemeData theme, bool isDark) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -789,8 +800,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         icon: Icons.card_membership_rounded,
       ),
       StatusItem(
-        title: 'Kullanıcı Tipi',
-        value: _currentUser!.userType.toUpperCase(),
+        title: 'Ayarlar',
+        value: 'Yakında',
         color: _currentUser!.isAdmin ? const Color(0xFF8B5CF6) : const Color(0xFF0066FF),
         icon: _currentUser!.isAdmin ? Icons.admin_panel_settings_rounded : Icons.person_rounded,
       ),
@@ -901,115 +912,150 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildMenuGrid(ThemeData theme, bool isDark) {
-    final menuItems = [
-      MenuItem(
-        icon: Icons.route_rounded,
-        title: 'Yol Haritası',
-        color: const Color(0xFF8B5CF6),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => RoadmapScreen()),
-          );
-        },
-      ),
-      MenuItem(
-        icon: Icons.play_circle_rounded,
-        title: 'Videolar',
-        color: const Color(0xFFEF4444),
-        onTap: () {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, _) => TeachersPage(),
-              transitionDuration: const Duration(milliseconds: 600),
-              transitionsBuilder: (context, animation, _, child) {
-                return SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(1.0, 0.0),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeInOutCubic,
-                  )),
-                  child: child,
-                );
-              },
-            ),
-          );
-        },
-      ),
-      MenuItem(
-        icon: Icons.payment_rounded,
-        title: 'Ödemeler',
-        color: const Color(0xFFFFB800), // Altın sarısı renk
-        onTap: () {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, _) => OdemelerPage(),
-              transitionDuration: const Duration(milliseconds: 600),
-              transitionsBuilder: (context, animation, _, child) {
-                return SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(1.0, 0.0),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeInOutCubic,
-                  )),
-                  child: child,
-                );
-              },
-            ),
-          );
-        },
-      ),
-      MenuItem(
-        icon: Icons.folder_rounded,
-        title: 'Dosyalar',
-        color: const Color(0xFF10B981),
-        onTap: () {
-          Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (context, animation, _) => FilesPage(),
-              transitionDuration: const Duration(milliseconds: 600),
-              transitionsBuilder: (context, animation, _, child) {
-                return SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(1.0, 0.0),
-                    end: Offset.zero,
-                  ).animate(CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeInOutCubic,
-                  )),
-                  child: child,
-                );
-              },
-            ),
-          );
-        },
-      ),
-      MenuItem(
-        icon: Icons.help_outline_rounded,
-        title: 'Soru Sor',
-        color: const Color(0xFFFF6B35),
-        onTap: () => _showAskTeacherDialog(),
-      ),
-      MenuItem(
-        icon: Icons.quiz_rounded,
-        title: 'Quizler',
-        color: const Color(0xFF8B5CF6),
-        onTap: () => context.showComingSoon('Quizler'),
-      ),
-      MenuItem(
-        icon: Icons.person_rounded,
-        title: 'Profil',
-        color: const Color(0xFF0891B2),
-        onTap: () => context.showComingSoon('Profil'),
-      ),
-    ];
+    // Aktif olmayan kullanıcılar için sadece ödeme menüsü
+    final List<MenuItem> menuItems;
+
+    if (!_currentUser!.isActive) {
+      menuItems = [
+        MenuItem(
+          icon: Icons.payment_rounded,
+          title: 'Ödeme Bekleniyor, Tıklayarak Ödeme Yapın.',
+          color: const Color(0xFFFFB800),
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, _) => OdemelerPage(),
+                transitionDuration: const Duration(milliseconds: 600),
+                transitionsBuilder: (context, animation, _, child) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(1.0, 0.0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    )),
+                    child: child,
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ];
+    } else {
+      // Aktif kullanıcılar için tüm menü
+      menuItems = [
+        MenuItem(
+          icon: Icons.route_rounded,
+          title: 'Yol Haritası',
+          color: const Color(0xFF8B5CF6),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => RoadmapScreen()),
+            );
+          },
+        ),
+        MenuItem(
+          icon: Icons.play_circle_rounded,
+          title: 'Videolar',
+          color: const Color(0xFFEF4444),
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, _) => TeachersPage(),
+                transitionDuration: const Duration(milliseconds: 600),
+                transitionsBuilder: (context, animation, _, child) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(1.0, 0.0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    )),
+                    child: child,
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        MenuItem(
+          icon: Icons.payment_rounded,
+          title: 'Ödemeler',
+          color: const Color(0xFFFFB800),
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, _) => OdemelerPage(),
+                transitionDuration: const Duration(milliseconds: 600),
+                transitionsBuilder: (context, animation, _, child) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(1.0, 0.0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    )),
+                    child: child,
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        MenuItem(
+          icon: Icons.folder_rounded,
+          title: 'Dosyalar',
+          color: const Color(0xFF10B981),
+          onTap: () {
+            Navigator.push(
+              context,
+              PageRouteBuilder(
+                pageBuilder: (context, animation, _) => FilesPage(),
+                transitionDuration: const Duration(milliseconds: 600),
+                transitionsBuilder: (context, animation, _, child) {
+                  return SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(1.0, 0.0),
+                      end: Offset.zero,
+                    ).animate(CurvedAnimation(
+                      parent: animation,
+                      curve: Curves.easeInOutCubic,
+                    )),
+                    child: child,
+                  );
+                },
+              ),
+            );
+          },
+        ),
+        MenuItem(
+          icon: Icons.help_outline_rounded,
+          title: 'Soru Sor',
+          color: const Color(0xFFFF6B35),
+          onTap: () => _showAskTeacherDialog(),
+        ),
+        MenuItem(
+          icon: Icons.quiz_rounded,
+          title: 'Quizler',
+          color: const Color(0xFF8B5CF6),
+          onTap: () => context.showComingSoon('Quizler'),
+        ),
+        MenuItem(
+          icon: Icons.person_rounded,
+          title: 'Profil',
+          color: const Color(0xFF0891B2),
+          onTap: () => context.showComingSoon('Profil'),
+        ),
+      ];
+    }
 
     return AnimatedBuilder(
       animation: _cardsController,
@@ -1018,7 +1064,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Menü',
+              _currentUser!.isActive ? 'Menü' : 'Ödeme Yapın',
               style: TextStyle(
                 fontSize: _isMobile(context) ? 20 : _isTablet(context) ? 24 : 28,
                 fontWeight: FontWeight.bold,
@@ -1026,14 +1072,75 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
             SizedBox(height: _isMobile(context) ? 12 : 16),
+
+            // Aktif olmayan kullanıcılar için uyarı mesajı
+            if (!_currentUser!.isActive) ...[
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(_isMobile(context) ? 16 : 20),
+                margin: EdgeInsets.only(bottom: _isMobile(context) ? 16 : 20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFB800).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: const Color(0xFFFFB800).withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFB800).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.warning_rounded,
+                        color: Color(0xFFFFB800),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Ödeme Bekleniyor',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: const Color(0xFFFFB800),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tüm özelliklere erişim için ödeme yapmanız gerekmektedir.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: _getMenuGridColumns(context),
+                crossAxisCount: _currentUser!.isActive
+                    ? _getMenuGridColumns(context)
+                    : 1, // Aktif değilse tek kolon
                 crossAxisSpacing: _isMobile(context) ? 12 : 16,
                 mainAxisSpacing: _isMobile(context) ? 12 : 16,
-                childAspectRatio: _isMobile(context) ? 1.0 : _isTablet(context) ? 1.1 : 1.2,
+                childAspectRatio: _currentUser!.isActive
+                    ? (_isMobile(context) ? 1.0 : _isTablet(context) ? 1.1 : 1.2)
+                    : 2.5, // Aktif değilse daha geniş card
               ),
               itemCount: menuItems.length,
               itemBuilder: (context, index) {
@@ -1060,7 +1167,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       },
     );
   }
-
   // Öğretmene soru sor dialog'u
   void _showAskTeacherDialog() {
     if (_currentUser?.ogretmenAdi == null) {

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/utils/snackbar_utils.dart';
 import '../../data/models/roadmap_category.dart';
+import '../../data/models/roadmap_level.dart';
 import '../../data/models/roadmap_step.dart';
 
 class CategoryDetailScreen extends StatefulWidget {
@@ -21,294 +22,75 @@ class CategoryDetailScreen extends StatefulWidget {
   _CategoryDetailScreenState createState() => _CategoryDetailScreenState();
 }
 
-class _CategoryDetailScreenState extends State<CategoryDetailScreen>
-    with TickerProviderStateMixin {
+class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
   bool _isLoading = false;
-  late AnimationController _fadeController;
-  late AnimationController _listController;
+  late RoadmapCategory _category;
+
+  // Arama
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _showSearch = false;
+
+  // Collapse durumları
+  Map<int, bool> _levelCollapsed = {};
 
   @override
   void initState() {
     super.initState();
-    _initAnimations();
-    _startAnimations();
-  }
+    _category = widget.category;
 
-  void _initAnimations() {
-    _fadeController = AnimationController(
-      duration: const Duration(milliseconds: 600),
-      vsync: this,
-    );
-    _listController = AnimationController(
-      duration: const Duration(milliseconds: 800),
-      vsync: this,
-    );
-  }
-
-  void _startAnimations() {
-    _fadeController.forward();
-    Future.delayed(const Duration(milliseconds: 200), () {
-      _listController.forward();
+    // Arama listener
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
     });
+
+    // Başlangıçta tüm levels açık
+    for (final level in _category.levels) {
+      _levelCollapsed[level.id] = true;
+    }
   }
 
   @override
   void dispose() {
-    _fadeController.dispose();
-    _listController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  bool _isMobile(BuildContext context) =>
-      MediaQuery.of(context).size.width < 600;
+  bool get _isMobile => MediaQuery.of(context).size.width < 600;
 
-  Future<void> _startStep(RoadmapStep step) async {
-    if (!step.canStart) return;
-
-    if (!mounted) return; // Mounted kontrolü ekle
-    setState(() => _isLoading = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        if (mounted) context.showError('Oturum süresi dolmuş'); // Mounted kontrolü
-        return;
-      }
-
-      final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/roadmap/start-step'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'step_id': step.id,
-          'category_id': widget.category.id,
-        }),
-      );
-
-      if (!mounted) return; // API çağrısından sonra da kontrol et
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          HapticFeedback.lightImpact();
-          if (mounted) context.showSuccess('Adım başlatıldı!');
-
-          if (mounted) { // setState çağrısından önce kontrol et
-            setState(() {
-              final stepIndex = widget.category.steps.indexOf(step);
-              if (stepIndex != -1) {
-                widget.category.steps[stepIndex] = step.copyWith(
-                  status: 'in_progress',
-                  startedAt: DateTime.now(),
-                  canAddDailyComment: true,
-                );
-              }
-            });
-          }
-        } else {
-          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
-        }
-      } else {
-        if (mounted) context.showError('Sunucu hatası');
-      }
-    } catch (e) {
-      if (mounted) context.showError('Bağlantı hatası');
-    } finally {
-      if (mounted) setState(() => _isLoading = false); // Finally bloğunda da kontrol et
-    }
-  }
-  Future<void> _markStepComplete(RoadmapStep step, {String? comment}) async {
-    if (!step.canComplete) return;
-
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        if (mounted) context.showError('Oturum süresi dolmuş');
-        return;
-      }
-
-      final requestBody = <String, dynamic>{
-        'step_id': step.id,
-        'category_id': widget.category.id,
-      };
-
-      if (comment != null && comment.isNotEmpty) {
-        requestBody['comment'] = comment;
-      }
-
-      final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/roadmap/complete-step'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode(requestBody),
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          HapticFeedback.lightImpact();
-          if (mounted) {
-            context.showSuccess(comment != null && comment.isNotEmpty
-                ? 'Adım yorumunuzla birlikte tamamlandı!'
-                : 'Adım tamamlandı!');
-          }
-
-          if (mounted) {
-            setState(() {
-              final stepIndex = widget.category.steps.indexOf(step);
-              if (stepIndex != -1) {
-                widget.category.steps[stepIndex] = step.copyWith(
-                  status: 'completed',
-                  completedAt: DateTime.now(),
-                  canAddDailyComment: false,
-                );
-              }
-            });
-          }
-        } else {
-          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
-        }
-      } else {
-        if (mounted) context.showError('Sunucu hatası');
-      }
-    } catch (e) {
-      if (mounted) context.showError('Bağlantı hatası');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _addDailyComment(RoadmapStep step, String comment) async {
-    if (!mounted) return;
-    setState(() => _isLoading = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        if (mounted) context.showError('Oturum süresi dolmuş');
-        return;
-      }
-
-      final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/roadmap/add-daily-comment'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'step_id': step.id,
-          'comment': comment,
-        }),
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          HapticFeedback.lightImpact();
-          if (mounted) context.showSuccess('Günlük ilerlemeniz kaydedildi!');
-
-          if (mounted) {
-            setState(() {
-              final stepIndex = widget.category.steps.indexOf(step);
-              if (stepIndex != -1) {
-                widget.category.steps[stepIndex] = step.copyWith(
-                  canAddDailyComment: false,
-                );
-              }
-            });
-          }
-        } else {
-          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
-        }
-      } else {
-        if (mounted) context.showError('Sunucu hatası');
-      }
-    } catch (e) {
-      if (mounted) context.showError('Bağlantı hatası');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _showStepComments(RoadmapStep step) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('auth_token');
-
-      if (token == null) {
-        if (mounted) context.showError('Oturum süresi dolmuş');
-        return;
-      }
-
-      final response = await http.get(
-        Uri.parse('${ApiConstants.baseUrl}/roadmap/step-comments?step_id=${step.id}'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          if (mounted) _showCommentsDialog(step, data['data']);
-        } else {
-          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
-        }
-      } else {
-        if (mounted) context.showError('Sunucu hatası');
-      }
-    } catch (e) {
-      if (mounted) context.showError('Bağlantı hatası');
-    }
-  }
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: _buildAppBar(theme),
+      appBar: AppBar(
+        title: Text(_category.title),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_ios_rounded),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(_showSearch ? Icons.search_off : Icons.search),
+            onPressed: () {
+              setState(() {
+                _showSearch = !_showSearch;
+                if (!_showSearch) {
+                  _searchController.clear();
+                }
+              });
+            },
+          ),
+        ],
+      ),
       body: Stack(
         children: [
           _buildBody(theme, isDark),
           if (_isLoading) _buildLoadingOverlay(),
         ],
-      ),
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(ThemeData theme) {
-    return AppBar(
-      title: Text(
-        widget.category.title,
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          fontSize: _isMobile(context) ? 18 : 20,
-        ),
-      ),
-      leading: IconButton(
-        icon: Icon(Icons.arrow_back_ios_rounded),
-        onPressed: () => Navigator.pop(context),
       ),
     );
   }
@@ -330,228 +112,494 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
   }
 
   Widget _buildBody(ThemeData theme, bool isDark) {
+    final filteredLevels = _getFilteredLevels();
+
+    if (filteredLevels.isEmpty && _searchQuery.isNotEmpty) {
+      return _buildNoResultsView(isDark);
+    }
+
     return CustomScrollView(
       physics: const BouncingScrollPhysics(),
       slivers: [
-        SliverToBoxAdapter(
-          child: _buildHeader(theme, isDark),
-        ),
-        SliverToBoxAdapter(
-          child: _buildProgressCard(theme, isDark),
-        ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-                (context, index) {
-              final step = widget.category.steps[index];
-              return AnimatedBuilder(
-                animation: _listController,
-                builder: (context, child) {
-                  final delay = index * 0.05;
-                  final animationValue = Curves.easeOutCubic.transform(
-                      (_listController.value - delay).clamp(0.0, 1.0)
-                  );
+        // Header
+        SliverToBoxAdapter(child: _buildHeader(theme, isDark)),
 
-                  return Transform.translate(
-                    offset: Offset(0, 30 * (1 - animationValue)),
-                    child: Opacity(
-                      opacity: animationValue,
-                      child: _buildStepCard(step, index, theme, isDark),
-                    ),
-                  );
-                },
-              );
-            },
-            childCount: widget.category.steps.length,
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(height: 100),
-        ),
+        // Progress Card
+        SliverToBoxAdapter(child: _buildProgressCard(theme, isDark)),
+
+        // Search Bar
+        if (_showSearch)
+          SliverToBoxAdapter(child: _buildSearchBar(theme, isDark)),
+
+        // Levels
+        ...filteredLevels.map((level) => _buildLevelSection(level, theme, isDark)),
+
+        // Bottom padding
+        SliverToBoxAdapter(child: SizedBox(height: 100)),
       ],
     );
   }
 
-  Widget _buildHeader(ThemeData theme, bool isDark) {
-    return AnimatedBuilder(
-      animation: _fadeController,
-      builder: (context, child) {
-        return Opacity(
-          opacity: _fadeController.value,
-          child: Container(
-            margin: EdgeInsets.all(_isMobile(context) ? 16 : 24),
-            padding: EdgeInsets.all(_isMobile(context) ? 20 : 24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: isDark
-                    ? [Color(0xFF1E40AF), Color(0xFF3B82F6)]
-                    : [Color(0xFF0066FF), Color(0xFF00D4FF)],
-              ),
-              borderRadius: BorderRadius.circular(_isMobile(context) ? 16 : 20),
-              boxShadow: [
-                BoxShadow(
-                  color: theme.colorScheme.primary.withOpacity(0.3),
-                  blurRadius: 15,
-                  offset: Offset(0, 8),
-                ),
-              ],
+  Widget _buildNoResultsView(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 64,
+            color: isDark ? Colors.grey[600] : Colors.grey[400],
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Arama sonucu bulunamadı',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.category.title,
+          ),
+          SizedBox(height: 8),
+          Text(
+            '"$_searchQuery" için sonuç yok',
+            style: TextStyle(
+              fontSize: 14,
+              color: isDark ? Colors.grey[500] : Colors.grey[500],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeader(ThemeData theme, bool isDark) {
+    return Container(
+      margin: EdgeInsets.all(_isMobile ? 16 : 24),
+      padding: EdgeInsets.all(_isMobile ? 20 : 24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [Color(0xFF1E40AF), Color(0xFF3B82F6)]
+              : [Color(0xFF0066FF), Color(0xFF00D4FF)],
+        ),
+        borderRadius: BorderRadius.circular(_isMobile ? 16 : 20),
+        boxShadow: [
+          BoxShadow(
+            color: theme.colorScheme.primary.withOpacity(0.3),
+            blurRadius: 15,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.school_rounded,
+                color: Colors.white,
+                size: _isMobile ? 24 : 28,
+              ),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _category.title,
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: _isMobile(context) ? 20 : 24,
+                    fontSize: _isMobile ? 20 : 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                if (widget.category.description.isNotEmpty) ...[
-                  SizedBox(height: 8),
-                  Html(
-                    data: widget.category.description,
-                    style: {
-                      "body": Style(
-                        margin: Margins.zero,
-                        padding: HtmlPaddings.zero,
-                        color: Colors.white.withOpacity(0.9),
-                        fontSize: FontSize(_isMobile(context) ? 14 : 16),
-                      ),
-                      "p": Style(margin: Margins.zero),
-                      "strong": Style(fontWeight: FontWeight.bold),
-                      "em": Style(fontStyle: FontStyle.italic),
-                    },
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_category.totalLevelsCount} Aşama',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
           ),
-        );
-      },
+          if (_category.description.isNotEmpty) ...[
+            SizedBox(height: 12),
+            Text(
+              _category.description,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: _isMobile ? 14 : 16,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
   Widget _buildProgressCard(ThemeData theme, bool isDark) {
-    final completedSteps = widget.category.steps.where((s) => s.status == 'completed').length;
-    final inProgressSteps = widget.category.steps.where((s) => s.status == 'in_progress').length;
-    final totalSteps = widget.category.steps.length;
-    final progress = totalSteps > 0 ? completedSteps / totalSteps : 0.0;
+    final progress = _category.totalStepsCount > 0
+        ? _category.completedStepsCount / _category.totalStepsCount
+        : 0.0;
 
-    return AnimatedBuilder(
-      animation: _fadeController,
-      builder: (context, child) {
-        return Transform.translate(
-          offset: Offset(0, 20 * (1 - _fadeController.value)),
-          child: Opacity(
-            opacity: _fadeController.value,
-            child: Container(
-              margin: EdgeInsets.symmetric(
-                horizontal: _isMobile(context) ? 16 : 24,
-                vertical: 8,
-              ),
-              padding: EdgeInsets.all(_isMobile(context) ? 16 : 20),
-              decoration: BoxDecoration(
-                color: theme.cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.05),
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: _isMobile ? 16 : 24, vertical: 8),
+      padding: EdgeInsets.all(_isMobile ? 16 : 20),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withOpacity(0.1)
+              : Colors.black.withOpacity(0.05),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Genel İlerleme',
+                style: TextStyle(
+                  fontSize: _isMobile ? 16 : 18,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.onSurface,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isDark
-                        ? Colors.black.withOpacity(0.2)
-                        : Colors.grey.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
-                  ),
-                ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'İlerleme',
-                        style: TextStyle(
-                          fontSize: _isMobile(context) ? 16 : 18,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.onSurface,
-                        ),
-                      ),
-                      Text(
-                        '${(progress * 100).toInt()}%',
-                        style: TextStyle(
-                          fontSize: _isMobile(context) ? 14 : 16,
-                          fontWeight: FontWeight.bold,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      backgroundColor: isDark
-                          ? Colors.grey[800]
-                          : Colors.grey.withOpacity(0.2),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        theme.colorScheme.primary,
-                      ),
-                      minHeight: 8,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          '$completedSteps / $totalSteps adım tamamlandı',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          ),
-                        ),
-                      ),
-                      if (inProgressSteps > 0)
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '$inProgressSteps devam ediyor',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.orange,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ],
+              Text(
+                '${(progress * 100).toInt()}%',
+                style: TextStyle(
+                  fontSize: _isMobile ? 14 : 16,
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
               ),
+            ],
+          ),
+          SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: progress,
+              backgroundColor: isDark
+                  ? Colors.grey[800]
+                  : Colors.grey.withOpacity(0.2),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                theme.colorScheme.primary,
+              ),
+              minHeight: 8,
             ),
           ),
-        );
-      },
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${_category.completedStepsCount} / ${_category.totalStepsCount} adım tamamlandı',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ),
+              if (_category.inProgressStepsCount > 0)
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '${_category.inProgressStepsCount} devam ediyor',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.orange,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStepCard(RoadmapStep step, int index, ThemeData theme, bool isDark) {
+  Widget _buildSearchBar(ThemeData theme, bool isDark) {
     return Container(
-      margin: EdgeInsets.symmetric(
-        horizontal: _isMobile(context) ? 16 : 24,
-        vertical: 6,
+      margin: EdgeInsets.symmetric(horizontal: _isMobile ? 16 : 24, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withOpacity(0.1)
+              : Colors.black.withOpacity(0.05),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: isDark
+                ? Colors.black.withOpacity(0.2)
+                : Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.search,
+            color: theme.colorScheme.primary,
+            size: 20,
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Aşama veya adım ara...',
+                border: InputBorder.none,
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  fontSize: 14,
+                ),
+              ),
+              style: TextStyle(
+                fontSize: 14,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+          if (_searchQuery.isNotEmpty)
+            IconButton(
+              icon: Icon(
+                Icons.clear,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                size: 20,
+              ),
+              onPressed: () => _searchController.clear(),
+              padding: EdgeInsets.zero,
+              constraints: BoxConstraints.tightFor(width: 32, height: 32),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLevelSection(RoadmapLevel level, ThemeData theme, bool isDark) {
+    final isCollapsed = _levelCollapsed[level.id] ?? false;
+    final filteredSteps = _getFilteredSteps(level);
+
+    return SliverMainAxisGroup(
+      slivers: [
+        // Level Header
+        SliverToBoxAdapter(
+          child: _buildLevelHeader(level, theme, isDark),
+        ),
+        // Steps (sadece açık ise)
+        if (!isCollapsed)
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                final step = filteredSteps[index];
+                return _buildStepCard(step, theme, isDark);
+              },
+              childCount: filteredSteps.length,
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLevelHeader(RoadmapLevel level, ThemeData theme, bool isDark) {
+    final isCollapsed = _levelCollapsed[level.id] ?? false;
+    final filteredSteps = _getFilteredSteps(level);
+
+    return Container(
+      margin: EdgeInsets.only(
+        left: _isMobile ? 16 : 24,
+        right: _isMobile ? 16 : 24,
+        top: 16,
+        bottom: 8,
+      ),
+      child: Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(
+            color: _getLevelBorderColor(level, theme),
+            width: 1.5,
+          ),
+        ),
+        child: InkWell(
+          onTap: () => _toggleLevelCollapse(level.id),
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: EdgeInsets.all(_isMobile ? 16 : 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _getLevelColors(level, isDark),
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              children: [
+                // Level numarası
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    shape: BoxShape.circle,
+                  ),
+                  child: level.isCompleted
+                      ? Icon(Icons.check_rounded, color: Colors.green[600], size: 20)
+                      : Center(
+                    child: Text(
+                      '${level.order}',
+                      style: TextStyle(
+                        color: _getLevelNumberColor(level, theme),
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(width: 16),
+                // Level bilgileri
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        level.title,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: _isMobile ? 16 : 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (level.description.isNotEmpty) ...[
+                        SizedBox(height: 4),
+                        Text(
+                          level.description,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.9),
+                            fontSize: _isMobile ? 13 : 14,
+                          ),
+                        ),
+                      ],
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.assignment_outlined,
+                            color: Colors.white.withOpacity(0.8),
+                            size: 16,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            '${level.completedStepsCount}/${level.totalStepsCount} adım',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (_searchQuery.isNotEmpty && filteredSteps.length != level.totalStepsCount) ...[
+                            Text(
+                              ' • ${filteredSteps.length} eşleşme',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                          Spacer(),
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              level.statusText,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 12),
+                // Progress circle
+                SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: CircularProgressIndicator(
+                    value: level.completionPercentage / 100,
+                    backgroundColor: Colors.white.withOpacity(0.3),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    strokeWidth: 3,
+                  ),
+                ),
+                SizedBox(width: 8),
+                // Collapse icon
+                AnimatedRotation(
+                  turns: isCollapsed ? -0.5 : 0,
+                  duration: Duration(milliseconds: 300),
+                  child: Icon(
+                    Icons.keyboard_arrow_down,
+                    color: Colors.white.withOpacity(0.8),
+                    size: 24,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepCard(RoadmapStep step, ThemeData theme, bool isDark) {
+    return Container(
+      margin: EdgeInsets.only(
+        left: _isMobile ? 24 : 32,
+        right: _isMobile ? 16 : 24,
+        bottom: 8,
+        top: 4,
       ),
       child: Card(
         elevation: 0,
@@ -566,16 +614,17 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
           onTap: () => _handleStepTap(step),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
-            padding: EdgeInsets.all(_isMobile(context) ? 16 : 18),
+            padding: EdgeInsets.all(_isMobile ? 16 : 18),
             child: Column(
               children: [
                 Row(
                   children: [
+                    // Step icon
                     Container(
                       width: 40,
                       height: 40,
                       decoration: BoxDecoration(
-                        color: _getStepColor(step, theme, isDark),
+                        color: _getStepColor(step, theme),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
@@ -585,6 +634,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                       ),
                     ),
                     SizedBox(width: 16),
+                    // Step info
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,7 +645,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                                 child: Text(
                                   step.displayTitle,
                                   style: TextStyle(
-                                    fontSize: _isMobile(context) ? 14 : 16,
+                                    fontSize: _isMobile ? 14 : 16,
                                     fontWeight: FontWeight.bold,
                                     color: _getStepTextColor(step, theme),
                                     decoration: step.status == 'completed'
@@ -618,9 +668,18 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                                   fontSize: FontSize(12),
                                   color: isDark ? Colors.grey[400] : Colors.grey[600],
                                 ),
-                                "p": Style(margin: Margins.zero),
-                                "strong": Style(fontWeight: FontWeight.bold),
-                                "em": Style(fontStyle: FontStyle.italic),
+                                "p": Style(
+                                  margin: Margins.zero,
+                                ),
+                                "strong": Style(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                "em": Style(
+                                  fontStyle: FontStyle.italic,
+                                ),
+                                "span": Style(
+                                  // Span elementleri için stil
+                                ),
                               },
                             ),
                           ],
@@ -644,8 +703,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                       ),
                   ],
                 ),
-
-                // ✅ YENİ: Geliştirilmiş günlük ilerleme alanı
+                // Günlük ilerleme bölümü
                 if (step.status == 'in_progress') ...[
                   SizedBox(height: 16),
                   _buildDailyProgressSection(step, theme, isDark),
@@ -658,26 +716,20 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
     );
   }
 
-// ✅ YENİ: Ayrı widget olarak günlük ilerleme bölümü
   Widget _buildDailyProgressSection(RoadmapStep step, ThemeData theme, bool isDark) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark
-            ? Colors.grey[900]?.withOpacity(0.3)
-            : Colors.grey[50],
+        color: isDark ? Colors.grey[900]?.withOpacity(0.3) : Colors.grey[50],
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDark
-              ? Colors.white.withOpacity(0.1)
-              : Colors.grey.withOpacity(0.2),
+          color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.withOpacity(0.2),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Başlık
           Row(
             children: [
               Icon(
@@ -697,28 +749,18 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
             ],
           ),
           SizedBox(height: 8),
-
-          // Durum mesajı veya buton
           if (step.canAddDailyComment == false)
-          // Bugün eklendi durumu
             Container(
               width: double.infinity,
               padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: Colors.green.withOpacity(0.3),
-                  width: 1,
-                ),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
               ),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: Colors.green[600],
-                    size: 18,
-                  ),
+                  Icon(Icons.check_circle_rounded, color: Colors.green[600], size: 18),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -730,103 +772,59 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                       ),
                     ),
                   ),
-                  Text(
-                    '✓',
-                    style: TextStyle(
-                      color: Colors.green[600],
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+                  Text('✓', style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.bold)),
                 ],
               ),
             )
           else
-          // Günlük ilerleme ekle butonu
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _showDailyCommentDialog(step),
                 icon: Icon(Icons.add_circle_outline_rounded, size: 18),
-                label: Text(
-                  'İlerleme Ekle',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
+                label: Text('İlerleme Ekle', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  shadowColor: Colors.transparent,
                   padding: EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                 ),
               ),
             ),
-
           SizedBox(height: 8),
-
-          // Alt butonlar - yan yana
           Row(
             children: [
-              // Adımı Tamamla butonu - sadece in_progress'te göster
               if (step.status == 'in_progress')
                 Expanded(
                   flex: 2,
                   child: ElevatedButton.icon(
-                    onPressed: () => _completeStep(step),
+                    onPressed: () => _showCompleteStepDialog(step),
                     icon: Icon(Icons.check_rounded, size: 16),
-                    label: Text(
-                      'Adımı Tamamla',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    label: Text('Adımı Tamamla', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange[600],
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      shadowColor: Colors.transparent,
                       padding: EdgeInsets.symmetric(vertical: 8),
                       minimumSize: Size(0, 32),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(6),
-                      ),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                     ),
                   ),
                 ),
-
-              if (step.status == 'in_progress')
-                SizedBox(width: 8),
-
-              // Yorumları gör butonu
+              if (step.status == 'in_progress') SizedBox(width: 8),
               Expanded(
                 flex: step.status == 'in_progress' ? 1 : 2,
                 child: OutlinedButton.icon(
                   onPressed: () => _showStepComments(step),
                   icon: Icon(Icons.history_rounded, size: 16),
-                  label: Text(
-                    'Geçmiş',
-                    style: TextStyle(fontSize: 12),
-                  ),
+                  label: Text('Geçmiş', style: TextStyle(fontSize: 12)),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: isDark ? Colors.grey[300] : Colors.grey[700],
-                    side: BorderSide(
-                      color: isDark
-                          ? Colors.grey[600]!
-                          : Colors.grey[300]!,
-                      width: 1,
-                    ),
+                    side: BorderSide(color: isDark ? Colors.grey[600]! : Colors.grey[300]!),
                     padding: EdgeInsets.symmetric(vertical: 8),
                     minimumSize: Size(0, 32),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                   ),
                 ),
               ),
@@ -836,16 +834,87 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
       ),
     );
   }
-  void _handleStepTap(RoadmapStep step) {
-    if (step.canStart) {
-      _showStartStepDialog(step);
-    } else if (step.canComplete) {
-      _showCompleteStepDialog(step);
+
+  Widget _buildStatusBadge(RoadmapStep step, ThemeData theme) {
+    Color color = _getStepColor(step, theme);
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        step.statusDisplayText,
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  // ===== HELPER METHODS =====
+
+  List<RoadmapLevel> _getFilteredLevels() {
+    if (_searchQuery.isEmpty) return _category.sortedLevels;
+
+    return _category.sortedLevels.where((level) {
+      if (level.title.toLowerCase().contains(_searchQuery) ||
+          level.description.toLowerCase().contains(_searchQuery)) {
+        return true;
+      }
+      return level.steps.any((step) =>
+      step.title.toLowerCase().contains(_searchQuery) ||
+          step.description.toLowerCase().contains(_searchQuery));
+    }).toList();
+  }
+
+  List<RoadmapStep> _getFilteredSteps(RoadmapLevel level) {
+    if (_searchQuery.isEmpty) return level.steps;
+
+    return level.steps.where((step) =>
+    step.title.toLowerCase().contains(_searchQuery) ||
+        step.description.toLowerCase().contains(_searchQuery)).toList();
+  }
+
+  void _toggleLevelCollapse(int levelId) {
+    setState(() {
+      _levelCollapsed[levelId] = !(_levelCollapsed[levelId] ?? false);
+    });
+  }
+
+  void _updateStep(RoadmapStep updatedStep) {
+    setState(() {
+      _category = _category.updateStep(updatedStep);
+    });
+  }
+
+  // Renk helper metodları
+  List<Color> _getLevelColors(RoadmapLevel level, bool isDark) {
+    if (level.isCompleted) {
+      return isDark ? [Color(0xFF16A34A), Color(0xFF22C55E)] : [Color(0xFF059669), Color(0xFF10B981)];
+    } else if (level.hasInProgress) {
+      return isDark ? [Color(0xFFEA580C), Color(0xFFF97316)] : [Color(0xFFDC2626), Color(0xFFEF4444)];
+    } else {
+      return isDark ? [Color(0xFF1E40AF), Color(0xFF3B82F6)] : [Color(0xFF0066FF), Color(0xFF00D4FF)];
     }
   }
-  void _completeStep(RoadmapStep step) {
-    _showCompleteStepDialog(step);
+
+  Color _getLevelBorderColor(RoadmapLevel level, ThemeData theme) {
+    if (level.isCompleted) return Colors.green.withOpacity(0.3);
+    if (level.hasInProgress) return Colors.orange.withOpacity(0.3);
+    return theme.colorScheme.primary.withOpacity(0.3);
   }
+
+  Color _getLevelNumberColor(RoadmapLevel level, ThemeData theme) {
+    if (level.isCompleted) return Colors.green[600]!;
+    if (level.hasInProgress) return Colors.orange[600]!;
+    return theme.colorScheme.primary;
+  }
+
   Color _getStepBorderColor(RoadmapStep step, ThemeData theme, bool isDark) {
     switch (step.status) {
       case 'completed':
@@ -853,20 +922,18 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
       case 'in_progress':
         return Colors.orange.withOpacity(0.3);
       default:
-        return isDark
-            ? Colors.white.withOpacity(0.1)
-            : Colors.black.withOpacity(0.05);
+        return isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05);
     }
   }
 
-  Color _getStepColor(RoadmapStep step, ThemeData theme, bool isDark) {
+  Color _getStepColor(RoadmapStep step, ThemeData theme) {
     switch (step.status) {
       case 'completed':
         return theme.colorScheme.primary;
       case 'in_progress':
         return Colors.orange;
       default:
-        return isDark ? Colors.grey[700]! : Colors.grey[300]!;
+        return Colors.grey[400]!;
     }
   }
 
@@ -913,26 +980,206 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
     }
   }
 
-  Widget _buildStatusBadge(RoadmapStep step, ThemeData theme) {
-    Color color = _getStepColor(step, theme, false);
+  // ===== ACTION METHODS =====
 
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Text(
-        step.statusDisplayText,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
+  void _handleStepTap(RoadmapStep step) {
+    if (step.canStart) {
+      _showStartStepDialog(step);
+    } else if (step.canComplete) {
+      _showCompleteStepDialog(step);
+    }
   }
+
+  Future<void> _startStep(RoadmapStep step) async {
+    if (!step.canStart || !mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) {
+        if (mounted) context.showError('Oturum süresi dolmuş');
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/start-step'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'step_id': step.id,
+          'category_id': _category.id,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          HapticFeedback.lightImpact();
+          if (mounted) context.showSuccess('Adım başlatıldı!');
+          _updateStep(step.copyWith(
+            status: 'in_progress',
+            isInProgress: true,
+            startedAt: DateTime.now(),
+            canAddDailyComment: true,
+          ));
+        } else {
+          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
+        }
+      } else {
+        if (mounted) context.showError('Sunucu hatası');
+      }
+    } catch (e) {
+      if (mounted) context.showError('Bağlantı hatası');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _markStepComplete(RoadmapStep step, {String? comment}) async {
+    if (!step.canComplete || !mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) {
+        if (mounted) context.showError('Oturum süresi dolmuş');
+        return;
+      }
+
+      final requestBody = <String, dynamic>{
+        'step_id': step.id,
+        'category_id': _category.id,
+      };
+      if (comment != null && comment.isNotEmpty) {
+        requestBody['comment'] = comment;
+      }
+
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/complete-step'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode(requestBody),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          HapticFeedback.lightImpact();
+          if (mounted) {
+            context.showSuccess(comment != null && comment.isNotEmpty
+                ? 'Adım yorumunuzla birlikte tamamlandı!'
+                : 'Adım tamamlandı!');
+          }
+          _updateStep(step.copyWith(
+            status: 'completed',
+            isCompleted: true,
+            isInProgress: false,
+            completedAt: DateTime.now(),
+            canAddDailyComment: false,
+          ));
+        } else {
+          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
+        }
+      } else {
+        if (mounted) context.showError('Sunucu hatası');
+      }
+    } catch (e) {
+      if (mounted) context.showError('Bağlantı hatası');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _addDailyComment(RoadmapStep step, String comment) async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) {
+        if (mounted) context.showError('Oturum süresi dolmuş');
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/add-daily-comment'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'step_id': step.id,
+          'comment': comment,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          HapticFeedback.lightImpact();
+          if (mounted) context.showSuccess('Günlük ilerlemeniz kaydedildi!');
+          _updateStep(step.copyWith(canAddDailyComment: false));
+        } else {
+          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
+        }
+      } else {
+        if (mounted) context.showError('Sunucu hatası');
+      }
+    } catch (e) {
+      if (mounted) context.showError('Bağlantı hatası');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showStepComments(RoadmapStep step) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      if (token == null) {
+        if (mounted) context.showError('Oturum süresi dolmuş');
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/roadmap/step-comments?step_id=${step.id}'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          if (mounted) _showCommentsDialog(step, data['data']);
+        } else {
+          if (mounted) context.showError(data['message'] ?? 'Bir hata oluştu');
+        }
+      } else {
+        if (mounted) context.showError('Sunucu hatası');
+      }
+    } catch (e) {
+      if (mounted) context.showError('Bağlantı hatası');
+    }
+  }
+
+  // ===== DIALOG METHODS =====
 
   void _showStartStepDialog(RoadmapStep step) {
     showDialog(
@@ -950,10 +1197,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${step.title} adımını başlatmak istiyor musunuz?',
-                style: TextStyle(fontSize: 16),
-              ),
+              Text('${step.title} adımını başlatmak istiyor musunuz?'),
               if (step.hasDescription) ...[
                 SizedBox(height: 16),
                 Text(
@@ -981,7 +1225,18 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                         padding: HtmlPaddings.zero,
                         fontSize: FontSize(14),
                       ),
-                      "p": Style(margin: Margins.only(bottom: 8)),
+                      "p": Style(
+                        margin: Margins.only(bottom: 8),
+                      ),
+                      "strong": Style(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      "em": Style(
+                        fontStyle: FontStyle.italic,
+                      ),
+                      "span": Style(
+                        // Span elementleri için de stilleri uygula
+                      ),
                     },
                   ),
                 ),
@@ -1029,14 +1284,9 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${step.title} adımını tamamladınız mı?',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text('${step.title} adımını tamamladınız mı?'),
 
+              // ✅ Adım detayını HTML olarak göster
               if (step.hasDescription) ...[
                 SizedBox(height: 16),
                 Text(
@@ -1054,9 +1304,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: Colors.grey.withOpacity(0.3),
-                    ),
+                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
                   ),
                   child: Html(
                     data: step.fullContent,
@@ -1066,16 +1314,24 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                         padding: HtmlPaddings.zero,
                         fontSize: FontSize(14),
                       ),
-                      "p": Style(margin: Margins.only(bottom: 8)),
-                      "strong": Style(fontWeight: FontWeight.bold),
-                      "em": Style(fontStyle: FontStyle.italic),
+                      "p": Style(
+                        margin: Margins.only(bottom: 8),
+                      ),
+                      "strong": Style(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      "em": Style(
+                        fontStyle: FontStyle.italic,
+                      ),
+                      "span": Style(
+                        // Span elementleri için özel stil
+                      ),
                     },
                   ),
                 ),
               ],
 
               SizedBox(height: 20),
-
               Text(
                 'Yorumunuz (Opsiyonel):',
                 style: TextStyle(
@@ -1089,13 +1345,9 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                 controller: commentController,
                 maxLines: 3,
                 decoration: InputDecoration(
-                  hintText: 'Bu adımı tamamlarken neler öğrendiniz? Zorlandığınız kısımlar var mıydı?',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  hintText: 'Bu adımı tamamlarken neler öğrendiniz?',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                   contentPadding: EdgeInsets.all(12),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surface,
                 ),
               ),
             ],
@@ -1132,67 +1384,31 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
             Expanded(child: Text('Günlük İlerleme')),
           ],
         ),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${step.title} adımında bugün neler yaptınız?',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('${step.title} adımında bugün neler yaptınız?'),
+            SizedBox(height: 16),
+            Text(
+              'Bugünkü İlerlemeleriniz:',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.primary,
               ),
-              SizedBox(height: 16),
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info, color: Colors.blue, size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Her gün bu adımla ilgili ilerlemelerinizi paylaşabilirsiniz.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue[700],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+            ),
+            SizedBox(height: 8),
+            TextField(
+              controller: commentController,
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'Örnek: Bugün 2 saat çalıştım, X konusunu öğrendim...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                contentPadding: EdgeInsets.all(12),
               ),
-              SizedBox(height: 16),
-              Text(
-                'Bugünkü İlerlemeleriniz:',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              SizedBox(height: 8),
-              TextField(
-                controller: commentController,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  hintText: 'Örnek: Bugün 2 saat çalıştım, X konusunu öğrendim, Y kısmında zorlandım...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  contentPadding: EdgeInsets.all(12),
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.surface,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -1240,19 +1456,9 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  Icons.comment_outlined,
-                  size: 64,
-                  color: Colors.grey[400],
-                ),
+                Icon(Icons.comment_outlined, size: 64, color: Colors.grey[400]),
                 SizedBox(height: 16),
-                Text(
-                  'Henüz yorum eklenmemiş',
-                  style: TextStyle(
-                    color: Colors.grey[600],
-                    fontSize: 16,
-                  ),
-                ),
+                Text('Henüz yorum eklenmemiş', style: TextStyle(color: Colors.grey[600])),
               ],
             ),
           )
@@ -1261,19 +1467,14 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
             itemBuilder: (context, index) {
               final comment = comments[index];
               final isCompleted = comment['status'] == 'completed';
-
               return Container(
                 margin: EdgeInsets.only(bottom: 12),
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isCompleted
-                      ? Colors.green.withOpacity(0.1)
-                      : Colors.blue.withOpacity(0.1),
+                  color: isCompleted ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: isCompleted
-                        ? Colors.green.withOpacity(0.3)
-                        : Colors.blue.withOpacity(0.3),
+                    color: isCompleted ? Colors.green.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
                   ),
                 ),
                 child: Column(
@@ -1314,10 +1515,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
                       ],
                     ),
                     SizedBox(height: 8),
-                    Text(
-                      comment['comment'],
-                      style: TextStyle(fontSize: 14),
-                    ),
+                    Text(comment['comment'], style: TextStyle(fontSize: 14)),
                   ],
                 ),
               );
@@ -1332,9 +1530,5 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen>
         ],
       ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
   }
 }

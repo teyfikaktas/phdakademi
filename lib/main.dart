@@ -1,11 +1,59 @@
 // main.dart - Basit ve temiz theme setup
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 import 'features/dashboard/dashboard_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Uygulama başlarken izinleri iste
+  await _requestPermissions();
 
   runApp(const MyApp());
+}
+
+// İzin isteme fonksiyonu
+Future<void> _requestPermissions() async {
+  if (Platform.isAndroid) {
+    try {
+      // Android sürümüne göre farklı izinler iste
+      List<Permission> permissions = [
+        Permission.storage,
+      ];
+
+      // Android 11+ için ek izinler
+      if (await Permission.manageExternalStorage.isDenied) {
+        permissions.add(Permission.manageExternalStorage);
+      }
+
+      // Android 13+ için medya izinleri
+      if (await Permission.photos.isDenied) {
+        permissions.add(Permission.photos);
+      }
+      if (await Permission.videos.isDenied) {
+        permissions.add(Permission.videos);
+      }
+
+      // İzinleri toplu olarak iste
+      Map<Permission, PermissionStatus> statuses = await permissions.request();
+
+      // İzin durumlarını logla
+      statuses.forEach((permission, status) {
+        print('${permission.toString()} izni: ${status.toString()}');
+      });
+
+      // Kritik izinler reddedildiyse kullanıcıyı bilgilendir
+      if (statuses[Permission.storage] == PermissionStatus.permanentlyDenied ||
+          statuses[Permission.manageExternalStorage] == PermissionStatus.permanentlyDenied) {
+        print('Dosya erişim izni kalıcı olarak reddedildi. Ayarlardan açılması gerekiyor.');
+      }
+
+    } catch (e) {
+      print('İzin isteme hatası: $e');
+    }
+  }
 }
 
 class MyApp extends StatefulWidget {

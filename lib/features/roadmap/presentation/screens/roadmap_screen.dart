@@ -286,12 +286,20 @@ class _RoadmapScreenState extends State<RoadmapScreen>
   Widget _buildProgressOverview(ThemeData theme, bool isDark) {
     if (_categories.isEmpty) return SizedBox.shrink();
 
+    // ✅ GÜNCELLEME: allSteps getter'ını kullan
     final totalSteps = _categories.fold<int>(
-        0, (sum, category) => sum + category.steps.length
+        0, (sum, category) => sum + category.totalStepsCount
     );
     final completedSteps = _categories.fold<int>(
         0, (sum, category) => sum + category.completedStepsCount
     );
+    final inProgressSteps = _categories.fold<int>(
+        0, (sum, category) => sum + category.inProgressStepsCount
+    );
+    final totalLevels = _categories.fold<int>(
+        0, (sum, category) => sum + category.totalLevelsCount
+    );
+
     final progress = totalSteps > 0 ? completedSteps / totalSteps : 0.0;
 
     return AnimatedBuilder(
@@ -363,13 +371,65 @@ class _RoadmapScreenState extends State<RoadmapScreen>
                       minHeight: 8,
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    '$completedSteps / $totalSteps adım tamamlandı',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: isDark ? Colors.grey[400] : Colors.grey[600],
-                    ),
+                  SizedBox(height: 12),
+                  // ✅ YENİ: Gelişmiş istatistikler
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '$completedSteps / $totalSteps adım tamamlandı',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              '$totalLevels aşama • ${_categories.length} kategori',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isDark ? Colors.grey[500] : Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (inProgressSteps > 0) ...[
+                        SizedBox(width: 8),
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.orange.withOpacity(0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.play_circle_outline,
+                                size: 12,
+                                color: Colors.orange[600],
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                '$inProgressSteps devam ediyor',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.orange[600],
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -381,8 +441,9 @@ class _RoadmapScreenState extends State<RoadmapScreen>
   }
 
   Widget _buildCategoryCard(RoadmapCategory category, ThemeData theme, bool isDark) {
-    final progress = category.steps.isNotEmpty
-        ? category.completedStepsCount / category.steps.length
+    // ✅ GÜNCELLEME: Levels yapısından progress hesapla
+    final progress = category.totalStepsCount > 0
+        ? category.completedStepsCount / category.totalStepsCount
         : 0.0;
 
     return Container(
@@ -414,9 +475,10 @@ class _RoadmapScreenState extends State<RoadmapScreen>
               children: [
                 Row(
                   children: [
+                    // Kategori ikonu
                     Container(
-                      width: 40,
-                      height: 40,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
                         color: _getCategoryColor(category.id).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -424,10 +486,11 @@ class _RoadmapScreenState extends State<RoadmapScreen>
                       child: Icon(
                         _getCategoryIcon(category.title),
                         color: _getCategoryColor(category.id),
-                        size: 20,
+                        size: 24,
                       ),
                     ),
-                    SizedBox(width: 12),
+                    SizedBox(width: 16),
+                    // Kategori bilgileri
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,19 +504,47 @@ class _RoadmapScreenState extends State<RoadmapScreen>
                             ),
                           ),
                           SizedBox(height: 4),
-                          Text(
-                            '${category.completedStepsCount}/${category.steps.length} adım',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            ),
+                          // ✅ YENİ: Levels ve steps bilgisi
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.layers_outlined,
+                                size: 14,
+                                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                '${category.totalLevelsCount} aşama',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              SizedBox(width: 8),
+                              Icon(
+                                Icons.assignment_outlined,
+                                size: 14,
+                                color: isDark ? Colors.grey[500] : Colors.grey[600],
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                '${category.completedStepsCount}/${category.totalStepsCount} adım',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
+                    // İlerleme circle
                     SizedBox(
-                      width: 40,
-                      height: 40,
+                      width: 45,
+                      height: 45,
                       child: CircularProgressIndicator(
                         value: progress,
                         backgroundColor: isDark
@@ -467,6 +558,8 @@ class _RoadmapScreenState extends State<RoadmapScreen>
                     ),
                   ],
                 ),
+
+                // Açıklama
                 if (category.description.isNotEmpty) ...[
                   SizedBox(height: 12),
                   Text(
@@ -475,21 +568,96 @@ class _RoadmapScreenState extends State<RoadmapScreen>
                       fontSize: 14,
                       color: isDark ? Colors.grey[400] : Colors.grey[600],
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
+
                 SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: isDark
-                        ? Colors.grey[800]
-                        : Colors.grey.withOpacity(0.2),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _getCategoryColor(category.id),
+
+                // Alt kısım: Progress bar ve durum bilgisi
+                Column(
+                  children: [
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: isDark
+                            ? Colors.grey[800]
+                            : Colors.grey.withOpacity(0.2),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _getCategoryColor(category.id),
+                        ),
+                        minHeight: 6,
+                      ),
                     ),
-                    minHeight: 6,
-                  ),
+
+                    SizedBox(height: 8),
+
+                    // ✅ YENİ: Durum badge'leri
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            category.statusText,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: _getCategoryStatusColor(category, theme),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+
+                        // Progress steps badgesi
+                        if (category.inProgressStepsCount > 0)
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              '${category.inProgressStepsCount} devam ediyor',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Colors.orange[600],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+
+                        // Completed badge
+                        if (category.isCompleted)
+                          Container(
+                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 10,
+                                  color: Colors.green[600],
+                                ),
+                                SizedBox(width: 2),
+                                Text(
+                                  'Tamamlandı',
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.green[600],
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -497,6 +665,14 @@ class _RoadmapScreenState extends State<RoadmapScreen>
         ),
       ),
     );
+  }
+
+  // ✅ YENİ: Kategori durum rengi
+  Color _getCategoryStatusColor(RoadmapCategory category, ThemeData theme) {
+    if (category.isCompleted) return Colors.green[600]!;
+    if (category.hasInProgress) return Colors.orange[600]!;
+    if (category.isNotStarted) return Colors.grey[600]!;
+    return theme.colorScheme.primary;
   }
 
   Color _getCategoryColor(int categoryId) {
@@ -512,11 +688,21 @@ class _RoadmapScreenState extends State<RoadmapScreen>
   }
 
   IconData _getCategoryIcon(String title) {
-    if (title.toLowerCase().contains('reading')) return Icons.menu_book_rounded;
-    if (title.toLowerCase().contains('writing')) return Icons.edit_rounded;
-    if (title.toLowerCase().contains('listening')) return Icons.headphones_rounded;
-    if (title.toLowerCase().contains('speaking')) return Icons.record_voice_over_rounded;
-    if (title.toLowerCase().contains('grammar')) return Icons.school_rounded;
+    final titleLower = title.toLowerCase();
+    if (titleLower.contains('reading') || titleLower.contains('okuma'))
+      return Icons.menu_book_rounded;
+    if (titleLower.contains('writing') || titleLower.contains('yazma'))
+      return Icons.edit_rounded;
+    if (titleLower.contains('listening') || titleLower.contains('dinleme'))
+      return Icons.headphones_rounded;
+    if (titleLower.contains('speaking') || titleLower.contains('konuşma'))
+      return Icons.record_voice_over_rounded;
+    if (titleLower.contains('grammar') || titleLower.contains('gramer'))
+      return Icons.school_rounded;
+    if (titleLower.contains('matematik') || titleLower.contains('math'))
+      return Icons.calculate_rounded;
+    if (titleLower.contains('ingilizce') || titleLower.contains('english'))
+      return Icons.language_rounded;
     return Icons.star_rounded;
   }
 
