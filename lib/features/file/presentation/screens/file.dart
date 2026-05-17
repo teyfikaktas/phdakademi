@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:permission_handler/permission_handler.dart';
@@ -951,10 +952,11 @@ class _CategoryFilesPageState extends State<CategoryFilesPage> {
     await _openFileUrl(fileUrl);
   }
 
+
   Future<void> _openFileUrl(String fileUrl) async {
     try {
-      // Android'de permission kontrolü
-      if (Platform.isAndroid) {
+      // Web kontrolü - Web'de izin yönetimi yapma
+      if (!kIsWeb && Platform.isAndroid) {
         // Android 13+ için yeni izinler
         if (await Permission.photos.isDenied) {
           await Permission.photos.request();
@@ -978,10 +980,21 @@ class _CategoryFilesPageState extends State<CategoryFilesPage> {
       print('Açılmaya çalışılan URL: $fileUrl'); // Debug için
 
       if (await canLaunchUrl(uri)) {
-        bool launched = await launchUrl(
-          uri,
-          mode: LaunchMode.externalApplication, // Dış uygulamada aç
-        );
+        bool launched;
+
+        if (kIsWeb) {
+          // Web'de farklı launch mode kullan
+          launched = await launchUrl(
+            uri,
+            mode: LaunchMode.platformDefault, // Web için en uygun mod
+          );
+        } else {
+          // Mobil için external application
+          launched = await launchUrl(
+            uri,
+            mode: LaunchMode.externalApplication, // Dış uygulamada aç
+          );
+        }
 
         if (launched) {
           context.showSuccess('Dosya başarıyla açıldı');
@@ -989,22 +1002,29 @@ class _CategoryFilesPageState extends State<CategoryFilesPage> {
           context.showError('Dosya açılamadı');
         }
       } else {
-        // Alternatif olarak browser'da açmayı dene
-        bool launched = await launchUrl(
-          uri,
-          mode: LaunchMode.externalNonBrowserApplication,
-        );
-
-        if (!launched) {
-          // Son çare olarak browser'da aç
-          await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+        if (kIsWeb) {
+          // Web'de alternatif yöntem
+          await launchUrl(uri, mode: LaunchMode.platformDefault);
           context.showSuccess('Dosya tarayıcıda açıldı');
         } else {
-          context.showSuccess('Dosya başarıyla açıldı');
+          // Mobil için alternatif yöntemler
+          bool launched = await launchUrl(
+            uri,
+            mode: LaunchMode.externalNonBrowserApplication,
+          );
+
+          if (!launched) {
+            // Son çare olarak browser'da aç
+            await launchUrl(uri, mode: LaunchMode.inAppBrowserView);
+            context.showSuccess('Dosya tarayıcıda açıldı');
+          } else {
+            context.showSuccess('Dosya başarıyla açıldı');
+          }
         }
       }
     } catch (e) {
       print('Dosya açma hatası: $e'); // Debug için
       context.showError('Dosya açılırken hata oluştu: ${e.toString()}');
     }
-  }}
+  }
+}

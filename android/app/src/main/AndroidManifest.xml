@@ -5,24 +5,37 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Dosya okuma/yazma izinleri -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Android 12 ve altı için dosya okuma izni -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
-    <!-- Android 11+ için dosya yönetimi izni -->
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        tools:ignore="ScopedStorage" />
 
-    <!-- Android 13+ için medya izinleri -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Kamera özelliği - zorunlu değil -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
 
     <application
         android:requestLegacyExternalStorage="true"
-        android:label="phd_akademi"
+        android:label="Phd Akademi"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- İzin kullanım açıklamaları -->
+        <meta-data
+            android:name="camera_usage_description"
+            android:value="Profil fotoğrafı çekimi ve ödev fotoğrafları için kamera kullanılır" />
+
+        <meta-data
+            android:name="photo_library_usage_description"
+            android:value="Profil fotoğrafı seçimi ve ödev dosyalarının gönderilmesi için galeri erişimi gereklidir" />
 
         <activity
             android:name=".MainActivity"

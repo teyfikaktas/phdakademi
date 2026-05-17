@@ -36,7 +36,8 @@ class _RegisterScreenState extends State<RegisterScreen>
   String _selectedTeacher = '1';
   String _selectedExam = 'YDS';
   String _selectedCity = 'İstanbul';
-
+  bool _joinKelibu = true;
+  bool _joinSelfEnglish = true;
   late AnimationController _logoController;
   late AnimationController _formController;
   late AnimationController _buttonController;
@@ -51,6 +52,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   // Eğitim amacı listesi
   final List<String> _examTypes = [
     'YDS',
+    'YDT',
     'YÖKDİL',
     'Genel İngilizce',
     'IELTS',
@@ -175,6 +177,34 @@ class _RegisterScreenState extends State<RegisterScreen>
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Apps modal'ını göster
+    _showAppsModal();
+  }
+  void _showAppsModal() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return _AppsSelectionModal(
+          currentThemeMode: widget.currentThemeMode,
+          initialKelibu: _joinKelibu,
+          initialSelfEnglish: _joinSelfEnglish,
+          onConfirm: (joinKelibu, joinSelfEnglish) {
+            setState(() {
+              _joinKelibu = joinKelibu;
+              _joinSelfEnglish = joinSelfEnglish;
+            });
+            _performRegistration();
+          },
+          onCancel: () {
+            Navigator.of(context).pop();
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _performRegistration() async {
     setState(() {
       _isLoading = true;
       _errorMessage = '';
@@ -184,7 +214,7 @@ class _RegisterScreenState extends State<RegisterScreen>
 
     try {
       final response = await http.post(
-        Uri.parse('${ApiConstants.baseUrl}/register'), // URL DEĞİŞTİRİLDİ
+        Uri.parse('${ApiConstants.baseUrl}/register'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
           'adsoyad': _nameController.text.trim(),
@@ -193,6 +223,8 @@ class _RegisterScreenState extends State<RegisterScreen>
           'sifre': _passwordController.text,
           'ogretmen_id': _selectedTeacher,
           'exam': _selectedExam,
+          'join_kelibu': _joinKelibu,
+          'join_selfenglish': _joinSelfEnglish,
           'adres': _selectedCity,
         }),
       ).timeout(Duration(seconds: 15));
@@ -201,8 +233,6 @@ class _RegisterScreenState extends State<RegisterScreen>
 
       if (response.statusCode == 201 && data['success'] == true) {
         HapticFeedback.lightImpact();
-
-        // Başarı sayfasına yönlendir
         _navigateToSuccessPage(data);
       } else {
         HapticFeedback.heavyImpact();
@@ -220,7 +250,8 @@ class _RegisterScreenState extends State<RegisterScreen>
         _isLoading = false;
       });
     }
-  }  void _navigateToLogin() {
+  }
+  void _navigateToLogin() {
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
@@ -296,7 +327,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                       _buildForm(theme, isDark),
                       SizedBox(height: _isMobile(context) ? 24 : 32),
                       _buildRegisterButton(theme, isDark),
-                      SizedBox(height: _isMobile(context) ? 16 : 24),
+                      SizedBox(height: _isMobile(context) ? 24 : 32),
                       _buildLoginInfo(theme, isDark),
                     ],
                   ),
@@ -309,6 +340,107 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
+  Widget _buildAppCheckbox(
+      ThemeData theme,
+      bool isDark,
+      String appName,
+      String description,
+      bool value,
+      ValueChanged<bool?> onChanged,
+      Color accentColor,
+      ) {
+    String logoPath = appName == 'Kelibu' ? 'assets/kelibu.png' : 'assets/selfenglish.png';
+    IconData fallbackIcon = appName == 'Kelibu' ? Icons.translate_rounded : Icons.school_rounded;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withOpacity(0.02)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: value
+              ? accentColor.withOpacity(0.3)
+              : (isDark
+              ? Colors.white.withOpacity(0.1)
+              : Colors.black.withOpacity(0.08)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Transform.scale(
+            scale: 0.9,
+            child: Checkbox(
+              value: value,
+              onChanged: onChanged,
+              activeColor: accentColor,
+              checkColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: accentColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                logoPath,
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: accentColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      fallbackIcon,
+                      color: accentColor,
+                      size: 18,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appName,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: value
+                        ? accentColor
+                        : theme.colorScheme.onSurface.withOpacity(0.8),
+                  ),
+                ),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   Widget _buildBackButton(bool isDark) {
     return AnimatedBuilder(
       animation: _logoController,
@@ -1299,6 +1431,347 @@ class _RegisterScreenState extends State<RegisterScreen>
           ),
         );
       },
+    );
+  }
+}
+class _AppsSelectionModal extends StatefulWidget {
+  final ThemeMode? currentThemeMode;
+  final bool initialKelibu;
+  final bool initialSelfEnglish;
+  final Function(bool, bool) onConfirm;
+  final VoidCallback onCancel;
+
+  const _AppsSelectionModal({
+    required this.currentThemeMode,
+    required this.initialKelibu,
+    required this.initialSelfEnglish,
+    required this.onConfirm,
+    required this.onCancel,
+  });
+
+  @override
+  _AppsSelectionModalState createState() => _AppsSelectionModalState();
+}
+
+class _AppsSelectionModalState extends State<_AppsSelectionModal>
+    with TickerProviderStateMixin {
+  late bool _joinKelibu;
+  late bool _joinSelfEnglish;
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _joinKelibu = widget.initialKelibu;
+    _joinSelfEnglish = widget.initialSelfEnglish;
+
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.8,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutBack,
+    ));
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOut,
+    ));
+
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+  String _getSelectionMessage() {
+    if (_joinKelibu && _joinSelfEnglish) {
+      return 'Her iki uygulamaya otomatik üyeliğiniz oluşturulacaktır';
+    } else if (_joinKelibu) {
+      return 'Kelibu uygulamasına otomatik üyeliğiniz oluşturulacaktır';
+    } else if (_joinSelfEnglish) {
+      return 'SelfEnglish uygulamasına otomatik üyeliğiniz oluşturulacaktır';
+    } else {
+      return 'Hiçbir uygulamaya üye olmayacaksınız';
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return FadeTransition(
+          opacity: _fadeAnimation,
+          child: Material(
+            color: Colors.black.withOpacity(0.5 * _fadeAnimation.value),
+            child: Center(
+              child: ScaleTransition(
+                scale: _scaleAnimation,
+                child: Container(
+                  margin: const EdgeInsets.all(24),
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1A1A2E) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header
+// Header kısmını bununla değiştir:
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.apps_rounded,
+                              color: const Color(0xFF10B981),
+                              size: 24,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Diğer Uygulamalarımız',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                ),
+                                Text(
+                                  _getSelectionMessage(),
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Apps
+                      _buildAppOption(
+                        theme,
+                        isDark,
+                        'Kelibu',
+                        'Kelime haznenizi güçlendirin - 3000+ kelime ile',
+                        _joinKelibu,
+                            (value) => setState(() => _joinKelibu = value!),
+                        const Color(0xFF8B5CF6),
+                        'assets/kelibu.png',
+                        Icons.translate_rounded,
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      _buildAppOption(
+                        theme,
+                        isDark,
+                        'SelfEnglish',
+                        'İngilizce gramer konularını kendi hızınızda öğrenin',
+                        _joinSelfEnglish,
+                            (value) => setState(() => _joinSelfEnglish = value!),
+                        const Color(0xFF06B6D4),
+                        'assets/selfenglish.png',
+                        Icons.school_rounded,
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      // Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextButton(
+                              onPressed: widget.onCancel,
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                    color: theme.colorScheme.onSurface.withOpacity(0.2),
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                'İptal',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                HapticFeedback.mediumImpact();
+                                Navigator.of(context).pop();
+                                widget.onConfirm(_joinKelibu, _joinSelfEnglish);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: Text(
+                                'Kayıt Ol',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildAppOption(
+      ThemeData theme,
+      bool isDark,
+      String appName,
+      String description,
+      bool value,
+      ValueChanged<bool?> onChanged,
+      Color accentColor,
+      String logoPath,
+      IconData fallbackIcon,
+      ) {
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: value
+              ? accentColor.withOpacity(0.1)
+              : (isDark ? Colors.white.withOpacity(0.02) : Colors.grey.withOpacity(0.05)),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: value
+                ? accentColor.withOpacity(0.4)
+                : theme.colorScheme.onSurface.withOpacity(0.1),
+            width: value ? 2 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Transform.scale(
+              scale: 0.9,
+              child: Checkbox(
+                value: value,
+                onChanged: onChanged,
+                activeColor: accentColor,
+                checkColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  logoPath,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Icon(
+                      fallbackIcon,
+                      color: accentColor,
+                      size: 20,
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    appName,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: value
+                          ? accentColor
+                          : theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

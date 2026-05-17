@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/constants/api_constants.dart';
 import '../../../core/utils/snackbar_utils.dart';
+import 'credit_card_payment.dart';
 
 class AddPaymentPage extends StatefulWidget {
   @override
@@ -51,6 +52,7 @@ class _AddPaymentPageState extends State<AddPaymentPage> {
           _buildBody(theme, isDark),
           if (_isLoading) _buildLoadingOverlay(),
         ],
+
       ),
     );
   }
@@ -84,13 +86,47 @@ class _AddPaymentPageState extends State<AddPaymentPage> {
             _buildFormCard(theme, isDark),
             SizedBox(height: 24),
             _buildSubmitButton(theme),
+            SizedBox(height: 16),
+            // Kredi Kartı Butonu
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: OutlinedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => SubscriptionPackagesPage()),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Color(0xFF10B981),
+                  side: BorderSide(color: Color(0xFF10B981), width: 2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.credit_card, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'Kredi Kartı ile Öde',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
-
   Widget _buildHeaderCard(ThemeData theme, bool isDark) {
     return Container(
       padding: EdgeInsets.all(20),

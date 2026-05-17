@@ -41,8 +41,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   void initState() {
     super.initState();
     _initAnimations();
-    _loadUserInfo();
-  }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadUserInfo();
+    });  }
 
   void _initAnimations() {
     _heroController = AnimationController(
@@ -110,14 +111,16 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _loadUserInfo() async {
+    // Widget'tan gelen user varsa geçici olarak göster
     if (widget.userEntity != null) {
       setState(() {
         _currentUser = widget.userEntity;
       });
       _startAnimations();
-    } else {
-      await _fetchUserFromServer();
     }
+
+    // ⭐ HER ZAMAN API'DEN FRESH DATA ÇEK ⭐
+    await _fetchUserFromServer();
   }
 
   void _startAnimations() {
@@ -142,37 +145,55 @@ class _DashboardScreenState extends State<DashboardScreen>
         return;
       }
 
+      print('🌐 Fetching fresh user data from API...');
+
       final response = await http.get(
         Uri.parse('${ApiConstants.baseUrl}/me'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
-      );
+      ).timeout(const Duration(seconds: 10));
+
+      print('📡 API Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        print('📦 API Response Data: $data');
+
         if (data['success'] == true) {
           final userData = data['data'];
-          await prefs.setString('user_data', json.encode(userData));
+          print('👤 User Data: $userData');
 
+          // Sadece current user'ı set et, cache yok
           setState(() {
             _currentUser = UserEntity.fromJson(userData);
           });
+
+          print('✅ User loaded successfully: ${_currentUser!.name}');
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                // Force rebuild
+              });
+            }
+          });
           _startAnimations();
         } else {
+          print('❌ API Success false: ${data['message']}');
           _goToLogin();
         }
       } else {
+        print('❌ API Error - Status: ${response.statusCode}, Body: ${response.body}');
         _goToLogin();
       }
     } catch (e) {
+      print('💥 Fetch user error: $e');
       _goToLogin();
     } finally {
       setState(() => _isLoading = false);
     }
   }
-
   void _goToLogin() {
     Navigator.pushReplacement(
       context,
@@ -307,12 +328,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       titleSpacing: _isMobile(context) ? 16 : 24, // Sol boşluk
       actions: [
         IconButton(
-          icon: Icon(
-            Icons.refresh_rounded,
-            color: theme.colorScheme.onSurface,
-            size: _isMobile(context) ? 20 : 24,
-          ),
-          onPressed: _loadUserInfo,
+          icon: Icon(Icons.refresh_rounded),
+          onPressed: _refreshUserData, // ← Bu fonksiyonu kullan
         ),
         IconButton(
           icon: Icon(
@@ -346,7 +363,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadUserInfo,
+          onRefresh: _refreshUserData,
           child: CustomScrollView(
             physics: const BouncingScrollPhysics(),
             slivers: [
@@ -391,7 +408,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
-
+// Refresh için de aynı fonksiyonu kullan
+  Future<void> _refreshUserData() async {
+    print('🔄 Refreshing user data...');
+    await _fetchUserFromServer();
+  }
   Widget _buildHeroCard(ThemeData theme, bool isDark) {
     return AnimatedBuilder(
       animation: _heroController,
@@ -912,14 +933,25 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildMenuGrid(ThemeData theme, bool isDark) {
-    // Aktif olmayan kullanıcılar için sadece ödeme menüsü
+    // Aktif olmayan kullanıcılar için ödeme + yol haritası menüsü
     final List<MenuItem> menuItems;
 
-    if (!_currentUser!.isActive) {
+    if (!_currentUser!.hasActivePackage) {
       menuItems = [
         MenuItem(
+          icon: Icons.route_rounded,
+          title: 'Yol Haritası',
+          color: const Color(0xFF8B5CF6),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => RoadmapScreen()),
+            );
+          },
+        ),
+        MenuItem(
           icon: Icons.payment_rounded,
-          title: 'Ödeme Bekleniyor, Tıklayarak Ödeme Yapın.',
+          title: 'Ödeme Ekle',
           color: const Color(0xFFFFB800),
           onTap: () {
             Navigator.push(
@@ -1040,7 +1072,12 @@ class _DashboardScreenState extends State<DashboardScreen>
           icon: Icons.help_outline_rounded,
           title: 'Soru Sor',
           color: const Color(0xFFFF6B35),
-          onTap: () => _showAskTeacherDialog(),
+          onTap: () {
+            // Geçici olarak devre dışı
+            context.showComingSoon('Soru Sor');
+            // Aktif hale getirmek için:
+            // _showAskTeacherDialog();
+          },
         ),
         MenuItem(
           icon: Icons.quiz_rounded,
@@ -1064,7 +1101,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _currentUser!.isActive ? 'Menü' : 'Ödeme Yapın',
+              _currentUser!.hasActivePackage ? 'Menü' : 'Özellikler',
               style: TextStyle(
                 fontSize: _isMobile(context) ? 20 : _isTablet(context) ? 24 : 28,
                 fontWeight: FontWeight.bold,
@@ -1074,7 +1111,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             SizedBox(height: _isMobile(context) ? 12 : 16),
 
             // Aktif olmayan kullanıcılar için uyarı mesajı
-            if (!_currentUser!.isActive) ...[
+            if (!_currentUser!.hasActivePackage) ...[
               Container(
                 width: double.infinity,
                 padding: EdgeInsets.all(_isMobile(context) ? 16 : 20),
@@ -1115,7 +1152,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Tüm özelliklere erişim için ödeme yapmanız gerekmektedir.',
+                            'Yol haritasını inceleyebilirsiniz. Diğer özelliklere erişim için ödeme yapmanız gerekmektedir.',
                             style: TextStyle(
                               fontSize: 14,
                               color: theme.colorScheme.onSurface.withOpacity(0.7),
@@ -1133,14 +1170,14 @@ class _DashboardScreenState extends State<DashboardScreen>
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: _currentUser!.isActive
+                crossAxisCount: _currentUser!.hasActivePackage
                     ? _getMenuGridColumns(context)
-                    : 1, // Aktif değilse tek kolon
+                    : 2, // Aktif değilse 2 kolon (yol haritası + ödeme)
                 crossAxisSpacing: _isMobile(context) ? 12 : 16,
                 mainAxisSpacing: _isMobile(context) ? 12 : 16,
-                childAspectRatio: _currentUser!.isActive
+                childAspectRatio: _currentUser!.hasActivePackage
                     ? (_isMobile(context) ? 1.0 : _isTablet(context) ? 1.1 : 1.2)
-                    : 2.5, // Aktif değilse daha geniş card
+                    : (_isMobile(context) ? 1.0 : 1.2), // Aktif değilse kare benzeri
               ),
               itemCount: menuItems.length,
               itemBuilder: (context, index) {
@@ -1167,7 +1204,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       },
     );
   }
-  // Öğretmene soru sor dialog'u
   void _showAskTeacherDialog() {
     if (_currentUser?.ogretmenAdi == null) {
       context.showError('Henüz bir öğretmen atanmamış');

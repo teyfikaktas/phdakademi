@@ -5,18 +5,24 @@ class RoadmapStep {
   final String title;
   final String description;
   final String? text;
+  final String? video;
   final int categoryId;
   final int levelId;
   final int order;
   final String status; // 'not_started', 'in_progress', 'completed'
   final bool isCompleted;
   final bool isInProgress;
-  final bool? canAddDailyComment; // YENİ: Günlük comment ekleyebilir mi?
-  final String? lastComment; // YENİ: Son eklenen comment
+  final bool? canAddDailyComment;
+  final String? lastComment;
   final DateTime? startedAt;
   final DateTime? completedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+
+  // ✅ YENİ: Öğretmen feedback alanları
+  final String? teacherFeedback;
+  final DateTime? teacherFeedbackDate;
+  final bool hasTeacherFeedback;
 
   RoadmapStep({
     required this.id,
@@ -29,12 +35,17 @@ class RoadmapStep {
     this.status = 'not_started',
     this.isCompleted = false,
     this.isInProgress = false,
-    this.canAddDailyComment, // YENİ
-    this.lastComment, // YENİ
+    this.canAddDailyComment,
+    this.lastComment,
     this.startedAt,
+    this.video = '',
     this.completedAt,
     this.createdAt,
     this.updatedAt,
+    // ✅ YENİ parametreler
+    this.teacherFeedback,
+    this.teacherFeedbackDate,
+    this.hasTeacherFeedback = false,
   });
 
   factory RoadmapStep.fromJson(Map<String, dynamic> json) {
@@ -47,10 +58,11 @@ class RoadmapStep {
       levelId: json['level_id'] ?? 0,
       order: json['order'] ?? 0,
       status: json['status'] ?? 'not_started',
+      video: json['video'] ,
       isCompleted: json['is_completed'] ?? false,
       isInProgress: json['is_in_progress'] ?? false,
-      canAddDailyComment: json['can_add_daily_comment'], // YENİ
-      lastComment: json['last_comment'], // YENİ
+      canAddDailyComment: json['can_add_daily_comment'],
+      lastComment: json['last_comment'],
       startedAt: json['started_at'] != null
           ? DateTime.parse(json['started_at'])
           : null,
@@ -63,6 +75,12 @@ class RoadmapStep {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'])
           : null,
+      // ✅ YENİ: Öğretmen feedback alanları
+      teacherFeedback: json['teacher_feedback'],
+      teacherFeedbackDate: json['teacher_feedback_date'] != null
+          ? DateTime.parse(json['teacher_feedback_date'])
+          : null,
+      hasTeacherFeedback: json['has_teacher_feedback'] ?? false,
     );
   }
 
@@ -78,12 +96,17 @@ class RoadmapStep {
       'status': status,
       'is_completed': isCompleted,
       'is_in_progress': isInProgress,
-      'can_add_daily_comment': canAddDailyComment, // YENİ
-      'last_comment': lastComment, // YENİ
+      'can_add_daily_comment': canAddDailyComment,
+      'video': video,
+      'last_comment': lastComment,
       'started_at': startedAt?.toIso8601String(),
       'completed_at': completedAt?.toIso8601String(),
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      // ✅ YENİ alanlar
+      'teacher_feedback': teacherFeedback,
+      'teacher_feedback_date': teacherFeedbackDate?.toIso8601String(),
+      'has_teacher_feedback': hasTeacherFeedback,
     };
   }
 
@@ -98,12 +121,17 @@ class RoadmapStep {
     String? status,
     bool? isCompleted,
     bool? isInProgress,
-    bool? canAddDailyComment, // YENİ
-    String? lastComment, // YENİ
+    bool? canAddDailyComment,
+    String? lastComment,
+    String? video,
     DateTime? startedAt,
     DateTime? completedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
+    // ✅ YENİ parametreler
+    String? teacherFeedback,
+    DateTime? teacherFeedbackDate,
+    bool? hasTeacherFeedback,
   }) {
     return RoadmapStep(
       id: id ?? this.id,
@@ -116,31 +144,29 @@ class RoadmapStep {
       status: status ?? this.status,
       isCompleted: isCompleted ?? this.isCompleted,
       isInProgress: isInProgress ?? this.isInProgress,
-      canAddDailyComment: canAddDailyComment ?? this.canAddDailyComment, // YENİ
-      lastComment: lastComment ?? this.lastComment, // YENİ
+      video: video ?? this.video,
+      canAddDailyComment: canAddDailyComment ?? this.canAddDailyComment,
+      lastComment: lastComment ?? this.lastComment,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      // ✅ YENİ alanlar
+      teacherFeedback: teacherFeedback ?? this.teacherFeedback,
+      teacherFeedbackDate: teacherFeedbackDate ?? this.teacherFeedbackDate,
+      hasTeacherFeedback: hasTeacherFeedback ?? this.hasTeacherFeedback,
     );
   }
 
   // Convenience methods
   String get displayTitle => '$order. $title';
-
   bool get hasDescription => description.isNotEmpty;
-
   bool get hasText => text != null && text!.isNotEmpty;
-
   String get fullContent => hasText ? text! : description;
-
+  bool get hasVideo => video != null && video!.isNotEmpty;
   bool get isNotStarted => status == 'not_started';
-
-  // YENİ: Comment ile ilgili metodlar
   bool get hasLastComment => lastComment != null && lastComment!.isNotEmpty;
-
-  bool get canAddDailyCommentToday =>
-      isInProgress && (canAddDailyComment ?? false);
+  bool get canAddDailyCommentToday => isInProgress && (canAddDailyComment ?? false);
 
   String get dailyCommentButtonText {
     if (!isInProgress) return '';
@@ -191,7 +217,6 @@ class RoadmapStep {
           baseText = 'Devam ediyor';
         }
 
-        // YENİ: Günlük comment durumu ekleme
         if (canAddDailyComment == false) {
           baseText += ' • Bugün yorum eklendi';
         } else if (canAddDailyComment == true) {
@@ -216,7 +241,6 @@ class RoadmapStep {
     }
   }
 
-  // YENİ: Detaylı status bilgisi
   String get detailedStatusText {
     String baseStatus = statusDisplayText;
 
@@ -235,7 +259,6 @@ class RoadmapStep {
     return baseStatus;
   }
 
-  // YENİ: Comment'i kısaltma metodu
   String _truncateComment(String comment, int maxLength) {
     if (comment.length <= maxLength) return comment;
     return '${comment.substring(0, maxLength)}...';
@@ -246,18 +269,11 @@ class RoadmapStep {
   bool get canComplete => status == 'in_progress';
   bool get canRestart => status == 'completed';
 
-  // YENİ: Buton durumları
-  bool get shouldShowDailyCommentButton =>
-      isInProgress && (canAddDailyComment == true);
-
-  bool get shouldShowCommentsHistoryButton =>
-      isInProgress || isCompleted;
-
+  bool get shouldShowDailyCommentButton => isInProgress && (canAddDailyComment == true);
+  bool get shouldShowCommentsHistoryButton => isInProgress || isCompleted;
   bool get shouldShowStartButton => canStart;
-
   bool get shouldShowCompleteButton => canComplete;
 
-  // YENİ: İkon belirleme
   IconData get statusIcon {
     switch (status) {
       case 'completed':
@@ -269,7 +285,6 @@ class RoadmapStep {
     }
   }
 
-  // YENİ: Renk belirleme
   Color getStatusColor(BuildContext context) {
     switch (status) {
       case 'completed':
@@ -281,19 +296,17 @@ class RoadmapStep {
     }
   }
 
-  // YENİ: Progress yüzdesi hesaplama (gelecekte kullanım için)
   double get progressPercentage {
     switch (status) {
       case 'completed':
         return 1.0;
       case 'in_progress':
-        return 0.5; // Gelecekte daha detaylı hesaplama yapılabilir
+        return 0.5;
       default:
         return 0.0;
     }
   }
 
-  // YENİ: Debug bilgisi
   Map<String, dynamic> get debugInfo => {
     'id': id,
     'title': title,
@@ -302,6 +315,7 @@ class RoadmapStep {
     'hasLastComment': hasLastComment,
     'isInProgress': isInProgress,
     'isCompleted': isCompleted,
+    'hasTeacherFeedback': hasTeacherFeedback,
     'startedAt': startedAt?.toIso8601String(),
     'completedAt': completedAt?.toIso8601String(),
   };
@@ -317,6 +331,6 @@ class RoadmapStep {
 
   @override
   String toString() {
-    return 'RoadmapStep(id: $id, title: $title, status: $status, canAddDailyComment: $canAddDailyComment)';
+    return 'RoadmapStep(id: $id, title: $title, status: $status, hasTeacherFeedback: $hasTeacherFeedback)';
   }
 }

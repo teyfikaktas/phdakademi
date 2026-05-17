@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:http/http.dart' as http;
+import 'package:phd_akademi/features/roadmap/presentation/screens/roadmap_video.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../../../core/utils/snackbar_utils.dart';
+import '../../../auth/domain/entities/user_entity.dart';
+import '../../../video/presentation/screens/video_player.dart';
 import '../../data/models/roadmap_category.dart';
 import '../../data/models/roadmap_level.dart';
 import '../../data/models/roadmap_step.dart';
@@ -16,6 +20,7 @@ class CategoryDetailScreen extends StatefulWidget {
   const CategoryDetailScreen({
     Key? key,
     required this.category,
+
   }) : super(key: key);
 
   @override
@@ -25,7 +30,8 @@ class CategoryDetailScreen extends StatefulWidget {
 class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
   bool _isLoading = false;
   late RoadmapCategory _category;
-
+  UserEntity? _currentUser; // User bilgisi için
+  bool _isUserLoading = true;
   // Arama
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -38,6 +44,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
   void initState() {
     super.initState();
     _category = widget.category;
+    _loadUserData(); // User verisini yükle
 
     // Arama listener
     _searchController.addListener(() {
@@ -57,7 +64,44 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
     _searchController.dispose();
     super.dispose();
   }
+  Future<void> _loadUserData() async {
+    setState(() => _isUserLoading = true);
 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        setState(() {
+          _currentUser = null;
+          _isUserLoading = false;
+        });
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            _currentUser = UserEntity.fromJson(data['data']);
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('User load error: $e');
+      setState(() => _currentUser = null);
+    } finally {
+      setState(() => _isUserLoading = false);
+    }
+  }
   bool get _isMobile => MediaQuery.of(context).size.width < 600;
 
   @override
@@ -642,19 +686,106 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                           Row(
                             children: [
                               Expanded(
-                                child: Text(
-                                  step.displayTitle,
-                                  style: TextStyle(
-                                    fontSize: _isMobile ? 14 : 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: _getStepTextColor(step, theme),
-                                    decoration: step.status == 'completed'
-                                        ? TextDecoration.lineThrough
-                                        : null,
-                                  ),
+                                child: Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        step.displayTitle,
+                                        style: TextStyle(
+                                          fontSize: _isMobile ? 14 : 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: _getStepTextColor(step, theme),
+                                          decoration: step.status == 'completed'
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                    // ✅ VİDEO İKONU - HER ADIM İÇİN GÖRÜNÜR
+                                    SizedBox(width: 8),
+                                    step.hasVideo
+                                        ? InkWell(
+                                      onTap: () => _openVideoPlayerR(step),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        padding: EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Color(0xFFFF4081),
+                                              Color(0xFFE91E63),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(8),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: Color(0xFFFF4081).withOpacity(0.3),
+                                              blurRadius: 4,
+                                              offset: Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.play_circle_filled_rounded,
+                                              color: Colors.white,
+                                              size: 14,
+                                            ),
+                                            SizedBox(width: 4),
+                                            Text(
+                                              'Video',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    )
+                                        : Container(
+                                      padding: EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: isDark ? Colors.grey[700] : Colors.grey[300],
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.play_circle_filled_rounded,
+                                            color: isDark ? Colors.grey[500] : Colors.grey[600],
+                                            size: 14,
+                                          ),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Video',
+                                            style: TextStyle(
+                                              color: isDark ? Colors.grey[500] : Colors.grey[600],
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
+                              SizedBox(width: 8),
                               _buildStatusBadge(step, theme),
+                              // ✅ ÖĞRETMEN YORUMU VARSA İKON GÖSTERİN
+                              if (step.hasTeacherFeedback) ...[
+                                SizedBox(width: 8),
+                                Icon(
+                                  Icons.school_rounded,
+                                  color: Colors.green[600],
+                                  size: 16,
+                                ),
+                              ],
                             ],
                           ),
                           if (step.hasDescription) ...[
@@ -668,18 +799,10 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                                   fontSize: FontSize(12),
                                   color: isDark ? Colors.grey[400] : Colors.grey[600],
                                 ),
-                                "p": Style(
-                                  margin: Margins.zero,
-                                ),
-                                "strong": Style(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                "em": Style(
-                                  fontStyle: FontStyle.italic,
-                                ),
-                                "span": Style(
-                                  // Span elementleri için stil
-                                ),
+                                "p": Style(margin: Margins.zero),
+                                "strong": Style(fontWeight: FontWeight.bold),
+                                "em": Style(fontStyle: FontStyle.italic),
+                                "span": Style(),
                               },
                             ),
                           ],
@@ -703,8 +826,15 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                       ),
                   ],
                 ),
+
+                // ✅ ÖĞRETMEN YORUMU BÖLÜMÜ - HEM COMPLETED HEM IN_PROGRESS İÇİN
+                if ((step.status == 'completed' || step.status == 'in_progress') && step.hasTeacherFeedback) ...[
+                  SizedBox(height: 16),
+                  _buildTeacherFeedbackSection(step, theme, isDark),
+                ],
+
                 // Günlük ilerleme bölümü
-                if (step.status == 'in_progress') ...[
+                if (step.status == 'in_progress' && (_currentUser?.hasActivePackage ?? false)) ...[
                   SizedBox(height: 16),
                   _buildDailyProgressSection(step, theme, isDark),
                 ],
@@ -715,16 +845,112 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       ),
     );
   }
+  void _openVideoPlayerR(RoadmapStep step) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => RoadmapVideoPage(step: step),
+        ),
 
-  Widget _buildDailyProgressSection(RoadmapStep step, ThemeData theme, bool isDark) {
+    );
+  }  Widget _buildTeacherFeedbackSection(RoadmapStep step, ThemeData theme, bool isDark) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey[900]?.withOpacity(0.3) : Colors.grey[50],
+        color: Colors.green.withOpacity(0.05),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.green.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.school_rounded, size: 16, color: Colors.green[600]),
+              SizedBox(width: 6),
+              Text(
+                'En Son Öğretmen Dönütü',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.green[700],
+                ),
+              ),
+              Spacer(),
+              if (step.teacherFeedbackDate != null)
+                Text(
+                  _formatDate(step.teacherFeedbackDate!),
+                  style: TextStyle(fontSize: 11, color: Colors.green[600]),
+                ),
+            ],
+          ),
+          SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.green.withOpacity(0.2)),
+            ),
+            child: Text(
+              step.teacherFeedback ?? '',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[800],
+                height: 1.4,
+              ),
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          SizedBox(height: 8),
+          // Tüm dönütleri görmek için buton
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => _showStepComments(step),
+              icon: Icon(Icons.visibility_rounded, size: 14),
+              label: Text('Tüm Dönütleri Gör', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.green[600],
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// ✅ TARIH FORMATLAMA HELPER METODU
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date).inDays;
+
+    if (difference == 0) {
+      return 'Bugün';
+    } else if (difference == 1) {
+      return 'Dün';
+    } else if (difference < 7) {
+      return '$difference gün önce';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
+    }
+  }
+  // CategoryDetailScreen sınıfının içine bu metodu ekleyin:
+
+  Widget _buildDailyProgressSection(RoadmapStep step, ThemeData theme, bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? Color(0xFF1A1A1A) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.white.withOpacity(0.1) : Colors.grey.withOpacity(0.2),
+          color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+          width: 1,
         ),
       ),
       child: Column(
@@ -732,47 +958,53 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
         children: [
           Row(
             children: [
-              Icon(
-                Icons.edit_note_rounded,
-                size: 16,
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              Container(
+                padding: EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.blue,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.trending_up,
+                  size: 18,
+                  color: Colors.white,
+                ),
               ),
-              SizedBox(width: 6),
+              SizedBox(width: 12),
               Text(
                 'Günlük İlerleme',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 16,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.grey[300] : Colors.grey[700],
+                  color: isDark ? Colors.white : Colors.black,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 8),
+          SizedBox(height: 16),
           if (step.canAddDailyComment == false)
             Container(
               width: double.infinity,
-              padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+              padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
+                color: Color(0xFF10B981),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle_rounded, color: Colors.green[600], size: 18),
-                  SizedBox(width: 8),
+                  Icon(Icons.check_circle, color: Colors.white, size: 20),
+                  SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       'Günlük ilerlemeniz kaydedildi',
                       style: TextStyle(
-                        color: Colors.green[700],
+                        color: Colors.white,
                         fontWeight: FontWeight.w500,
-                        fontSize: 13,
+                        fontSize: 14,
                       ),
                     ),
                   ),
-                  Text('✓', style: TextStyle(color: Colors.green[600], fontWeight: FontWeight.bold)),
+                  Icon(Icons.done, color: Colors.white, size: 18),
                 ],
               ),
             )
@@ -781,18 +1013,26 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _showDailyCommentDialog(step),
-                icon: Icon(Icons.add_circle_outline_rounded, size: 18),
-                label: Text('İlerleme Ekle', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                icon: Icon(Icons.add_circle_outline, size: 20),
+                label: Text(
+                  'İlerleme Ekle',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,
                   elevation: 0,
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  padding: EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
             ),
-          SizedBox(height: 8),
+          SizedBox(height: 12),
           Row(
             children: [
               if (step.status == 'in_progress')
@@ -800,31 +1040,44 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                   flex: 2,
                   child: ElevatedButton.icon(
                     onPressed: () => _showCompleteStepDialog(step),
-                    icon: Icon(Icons.check_rounded, size: 16),
-                    label: Text('Adımı Tamamla', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    icon: Icon(Icons.check, size: 18),
+                    label: Text(
+                      'Adımı Tamamla',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange[600],
+                      backgroundColor: Color(0xFFEF4444),
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      minimumSize: Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
-              if (step.status == 'in_progress') SizedBox(width: 8),
+              if (step.status == 'in_progress') SizedBox(width: 12),
               Expanded(
                 flex: step.status == 'in_progress' ? 1 : 2,
                 child: OutlinedButton.icon(
                   onPressed: () => _showStepComments(step),
-                  icon: Icon(Icons.history_rounded, size: 16),
-                  label: Text('Geçmiş', style: TextStyle(fontSize: 12)),
+                  icon: Icon(Icons.history, size: 18),
+                  label: Text(
+                    'Geçmiş',
+                    style: TextStyle(fontSize: 13),
+                  ),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: isDark ? Colors.grey[300] : Colors.grey[700],
-                    side: BorderSide(color: isDark ? Colors.grey[600]! : Colors.grey[300]!),
-                    padding: EdgeInsets.symmetric(vertical: 8),
-                    minimumSize: Size(0, 32),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                    foregroundColor: isDark ? Colors.white : Colors.black,
+                    side: BorderSide(
+                      color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                    ),
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
                 ),
               ),
@@ -834,7 +1087,6 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
       ),
     );
   }
-
   Widget _buildStatusBadge(RoadmapStep step, ThemeData theme) {
     Color color = _getStepColor(step, theme);
 
@@ -981,15 +1233,219 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
   }
 
   // ===== ACTION METHODS =====
-
   void _handleStepTap(RoadmapStep step) {
+    final hasAccess = _currentUser?.hasActivePackage ?? true;
+
+    if (!hasAccess) {
+      final theme = Theme.of(context);
+      final isDark = theme.brightness == Brightness.dark;
+
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              width: _isMobile ? MediaQuery.of(context).size.width * 0.9 : 420,
+              padding: EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: theme.cardColor,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // İkon
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFFFB800), Color(0xFFFFA000)],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: const Icon(
+                      Icons.lock_outline_rounded,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Başlık
+                  Text(
+                    'Üyelik Gerekli',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // Açıklama
+                  Text(
+                    'Adımlarla etkileşim kurabilmek için sisteme üye olmanız gerekiyor. Şu anda önizleme modundasınız.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Özellikler
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withOpacity(0.05)
+                          : Colors.black.withOpacity(0.03),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'Üyelik ile erişeceğiniz özellikler:',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface.withOpacity(0.8),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ...[
+                          'Birebir eğitim koçluğu',
+                          'Adım adım takip sistemi',
+                          'Yardımcı uygulamalar desteği',
+                          'SOS uygulaması',
+                          'Öğretmen ile etkileşim',
+                          'Günlük ilerleme kaydetme',
+                        ].map((text) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.check_circle_rounded,
+                                size: 16,
+                                color: Colors.green[600],
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  text,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.grey[300] : Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )).toList(),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // Butonlar
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(context);
+                            // Web sitesine yönlendir
+                            try {
+                              final Uri url = Uri.parse('https://phdakademi.com');
+                              if (await canLaunchUrl(url)) {
+                                await launchUrl(url, mode: LaunchMode.externalApplication);
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                context.showError('Web sitesi açılamadı');
+                              }
+                            }
+                          },
+                          icon: Icon(
+                            Icons.info_outline_rounded,
+                            size: 18,
+                            color: theme.colorScheme.primary,
+                          ),
+                          label: Text(
+                            'Detaylı Bilgi',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: theme.colorScheme.primary.withOpacity(0.3),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFFFB800),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: const Text(
+                            'Anladım',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      return;
+
+    }
+
+    // Normal işlemler
     if (step.canStart) {
       _showStartStepDialog(step);
     } else if (step.canComplete) {
       _showCompleteStepDialog(step);
     }
   }
-
   Future<void> _startStep(RoadmapStep step) async {
     if (!step.canStart || !mounted) return;
     setState(() => _isLoading = true);
@@ -1182,14 +1638,36 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
   // ===== DIALOG METHODS =====
 
   void _showStartStepDialog(RoadmapStep step) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Color(0xFF1A1A1A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Row(
           children: [
-            Icon(Icons.play_circle, color: Colors.orange),
-            SizedBox(width: 8),
-            Expanded(child: Text('Adımı Başlat')),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.play_arrow, color: Colors.white, size: 20),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Adımı Başlat',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -1197,25 +1675,33 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${step.title} adımını başlatmak istiyor musunuz?'),
+              Text(
+                '${step.title} adımını başlatmak istiyor musunuz?',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
               if (step.hasDescription) ...[
-                SizedBox(height: 16),
+                SizedBox(height: 20),
                 Text(
                   'Adım Detayı:',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue,
                   ),
                 ),
-                SizedBox(height: 8),
+                SizedBox(height: 12),
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.all(12),
+                  padding: EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: isDark ? Color(0xFF2A2A2A) : Color(0xFFF8F9FA),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    border: Border.all(
+                      color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                    ),
                   ),
                   child: Html(
                     data: step.fullContent,
@@ -1224,6 +1710,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                         margin: Margins.zero,
                         padding: HtmlPaddings.zero,
                         fontSize: FontSize(14),
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
                       "p": Style(
                         margin: Margins.only(bottom: 8),
@@ -1247,36 +1734,72 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('İptal'),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
               _startStep(step);
             },
-            icon: Icon(Icons.play_arrow),
-            label: Text('Başlat'),
+            icon: Icon(Icons.play_arrow, size: 18, color: Colors.white),
+            label: Text(
+              'Başlat',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+              ),
+            ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
+              backgroundColor: Colors.blue,
+              elevation: 0,
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
         ],
       ),
     );
   }
-
   void _showCompleteStepDialog(RoadmapStep step) {
     final TextEditingController commentController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Color(0xFF1A1A1A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Row(
           children: [
-            Icon(Icons.task_alt, color: Theme.of(context).colorScheme.primary),
-            SizedBox(width: 8),
-            Expanded(child: Text('Adımı Tamamla')),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Color(0xFFEF4444),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.check_circle, color: Colors.white, size: 20),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Adımı Tamamla',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -1284,27 +1807,35 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('${step.title} adımını tamamladınız mı?'),
+              Text(
+                '${step.title} adımını tamamladınız mı?',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
 
               // ✅ Adım detayını HTML olarak göster
               if (step.hasDescription) ...[
-                SizedBox(height: 16),
+                SizedBox(height: 20),
                 Text(
                   'Adım Detayı:',
                   style: TextStyle(
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFEF4444),
                   ),
                 ),
-                SizedBox(height: 8),
+                SizedBox(height: 12),
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.all(12),
+                  padding: EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
+                    color: isDark ? Color(0xFF2A2A2A) : Color(0xFFF8F9FA),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                    border: Border.all(
+                      color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                    ),
                   ),
                   child: Html(
                     data: step.fullContent,
@@ -1313,6 +1844,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                         margin: Margins.zero,
                         padding: HtmlPaddings.zero,
                         fontSize: FontSize(14),
+                        color: isDark ? Colors.white : Colors.black87,
                       ),
                       "p": Style(
                         margin: Margins.only(bottom: 8),
@@ -1336,18 +1868,44 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                 'Yorumunuz (Opsiyonel):',
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFFEF4444),
                 ),
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 12),
               TextField(
                 controller: commentController,
                 maxLines: 3,
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Bu adımı tamamlarken neler öğrendiniz?',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  contentPadding: EdgeInsets.all(12),
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.white38 : Colors.black38,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: Color(0xFFEF4444),
+                      width: 2,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(
+                      color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                    ),
+                  ),
+                  contentPadding: EdgeInsets.all(16),
+                  filled: true,
+                  fillColor: isDark ? Color(0xFF2A2A2A) : Color(0xFFF8F9FA),
                 ),
               ),
             ],
@@ -1356,56 +1914,128 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('İptal'),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.pop(context);
               _markStepComplete(step, comment: commentController.text.trim());
             },
-            icon: Icon(Icons.check_circle),
-            label: Text('Tamamla'),
+            icon: Icon(Icons.check_circle, size: 18, color: Colors.white),
+            label: Text(
+              'Tamamla',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFFEF4444),
+              elevation: 0,
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
-
   void _showDailyCommentDialog(RoadmapStep step) {
     final TextEditingController commentController = TextEditingController();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Color(0xFF1A1A1A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Row(
           children: [
-            Icon(Icons.today, color: Colors.green),
-            SizedBox(width: 8),
-            Expanded(child: Text('Günlük İlerleme')),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Color(0xFF10B981),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.edit_note, color: Colors.white, size: 20),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Günlük İlerleme',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ),
           ],
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${step.title} adımında bugün neler yaptınız?'),
-            SizedBox(height: 16),
+            Text(
+              '${step.title} adımında bugün neler yaptınız?',
+              style: TextStyle(
+                fontSize: 14,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+            SizedBox(height: 20),
             Text(
               'Bugünkü İlerlemeleriniz:',
               style: TextStyle(
                 fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF10B981),
               ),
             ),
-            SizedBox(height: 8),
+            SizedBox(height: 12),
             TextField(
               controller: commentController,
               maxLines: 4,
+              style: TextStyle(
+                color: isDark ? Colors.white : Colors.black,
+              ),
               decoration: InputDecoration(
                 hintText: 'Örnek: Bugün 2 saat çalıştım, X konusunu öğrendim...',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: EdgeInsets.all(12),
+                hintStyle: TextStyle(
+                  color: isDark ? Colors.white38 : Colors.black38,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: Color(0xFF10B981),
+                    width: 2,
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(
+                    color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                  ),
+                ),
+                contentPadding: EdgeInsets.all(16),
+                filled: true,
+                fillColor: isDark ? Color(0xFF2A2A2A) : Color(0xFFF8F9FA),
               ),
             ),
           ],
@@ -1413,39 +2043,84 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('İptal'),
+            child: Text(
+              'İptal',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
           ElevatedButton.icon(
             onPressed: () {
               final comment = commentController.text.trim();
+
+              // ✅ VALIDATION - Boş yorum kontrolü
               if (comment.isEmpty) {
                 context.showError('Lütfen bir yorum yazın');
                 return;
               }
+
+              // ✅ Dialog'u kapat ve API call yap
               Navigator.pop(context);
               _addDailyComment(step, comment);
             },
-            icon: Icon(Icons.save),
-            label: Text('Kaydet'),
+            icon: Icon(Icons.save, size: 18, color: Colors.white),
+            label: Text(
+              'Kaydet',
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+              ),
+            ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
+              backgroundColor: Color(0xFF10B981),
+              elevation: 0,
+              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
             ),
           ),
         ],
       ),
     );
-  }
+  }// CategoryDetailScreen'de sadece _showCommentsDialog metodunu değiştirin:
 
   void _showCommentsDialog(RoadmapStep step, List<dynamic> comments) {
+    // Öğretmen ve öğrenci yorumlarını ayır
+    final teacherComments = comments.where((c) => c['is_teacher_feedback'] == true).toList();
+    final studentComments = comments.where((c) => c['is_teacher_feedback'] != true).toList();
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: isDark ? Color(0xFF1A1A1A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: Row(
           children: [
-            Icon(Icons.history, color: Theme.of(context).colorScheme.primary),
-            SizedBox(width: 8),
-            Expanded(child: Text('Yorum Geçmişi')),
+            Container(
+              padding: EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(Icons.history, color: Colors.white, size: 20),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Yorum Geçmişi',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ),
           ],
         ),
         content: Container(
@@ -1456,79 +2131,223 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.comment_outlined, size: 64, color: Colors.grey[400]),
+                Icon(
+                  Icons.comment_outlined,
+                  size: 64,
+                  color: isDark ? Colors.white24 : Colors.black26,
+                ),
                 SizedBox(height: 16),
-                Text('Henüz yorum eklenmemiş', style: TextStyle(color: Colors.grey[600])),
+                Text(
+                  'Henüz yorum eklenmemiş',
+                  style: TextStyle(
+                    color: isDark ? Colors.white70 : Colors.black54,
+                    fontSize: 14,
+                  ),
+                ),
               ],
             ),
           )
-              : ListView.builder(
-            itemCount: comments.length,
-            itemBuilder: (context, index) {
-              final comment = comments[index];
-              final isCompleted = comment['status'] == 'completed';
-              return Container(
-                margin: EdgeInsets.only(bottom: 12),
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isCompleted ? Colors.green.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isCompleted ? Colors.green.withOpacity(0.3) : Colors.blue.withOpacity(0.3),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+              : SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ✅ ÖĞRETMEN YORUMLARI - EN ÜSTTE
+                if (teacherComments.isNotEmpty) ...[
+                  ...teacherComments.map((comment) => Container(
+                    margin: EdgeInsets.only(bottom: 12),
+                    padding: EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Color(0xFF10B981).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Color(0xFF10B981).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(
-                          isCompleted ? Icons.check_circle : Icons.today,
-                          size: 16,
-                          color: isCompleted ? Colors.green : Colors.blue,
+                        Row(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Color(0xFF10B981),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Icon(
+                                Icons.school,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              'Öğretmen Geri Bildirimi',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF10B981),
+                              ),
+                            ),
+                            Spacer(),
+                            Text(
+                              comment['formatted_date'],
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDark ? Colors.white54 : Colors.black54,
+                              ),
+                            ),
+                          ],
                         ),
-                        SizedBox(width: 8),
-                        Text(
-                          comment['formatted_date'],
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isCompleted ? Colors.green : Colors.blue,
-                          ),
-                        ),
-                        Spacer(),
+                        SizedBox(height: 12),
                         Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          width: double.infinity,
+                          padding: EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: isCompleted ? Colors.green : Colors.orange,
-                            borderRadius: BorderRadius.circular(10),
+                            color: isDark ? Color(0xFF2A2A2A) : Color(0xFFF8F9FA),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                            ),
                           ),
                           child: Text(
-                            isCompleted ? 'Tamamlandı' : 'Devam Ediyor',
+                            comment['comment'],
                             style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
+                              fontSize: 14,
+                              height: 1.4,
+                              color: isDark ? Colors.white : Colors.black87,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    SizedBox(height: 8),
-                    Text(comment['comment'], style: TextStyle(fontSize: 14)),
+                  )).toList(),
+
+                  // Ayırıcı
+                  if (studentComments.isNotEmpty) ...[
+                    SizedBox(height: 20),
+                    Container(
+                      height: 1,
+                      color: isDark ? Color(0xFF333333) : Color(0xFFE5E5E5),
+                    ),
+                    SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            Icons.person,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Öğrenci Yorumları',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12),
                   ],
-                ),
-              );
-            },
+                ],
+
+                // ✅ ÖĞRENCİ YORUMLARI
+                ...studentComments.map((comment) {
+                  final isCompleted = comment['status'] == 'completed';
+                  final statusColor = isCompleted ? Colors.blue : Color(0xFFEF4444);
+
+                  return Container(
+                    margin: EdgeInsets.only(bottom: 12),
+                    padding: EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: statusColor.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: statusColor,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Icon(
+                                isCompleted ? Icons.check_circle : Icons.schedule,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: 8),
+                            Text(
+                              comment['formatted_date'],
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: statusColor,
+                              ),
+                            ),
+                            Spacer(),
+                            Container(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: statusColor,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                isCompleted ? 'Tamamlandı' : 'Devam Ediyor',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 12),
+                        Text(
+                          comment['comment'],
+                          style: TextStyle(
+                            fontSize: 14,
+                            height: 1.4,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Kapat'),
+            child: Text(
+              'Kapat',
+              style: TextStyle(
+                color: isDark ? Colors.white70 : Colors.black54,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ],
       ),
     );
-  }
-}
+  }}

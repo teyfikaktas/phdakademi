@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -66,7 +68,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         return;
       }
 
-      print('🎬 Fetching video details for ID: ${widget.videoId}');
+      print('Fetching video details for ID: ${widget.videoId}');
 
       final response = await http.post(
         Uri.parse('${ApiConstants.baseUrl}/videos/get-link'),
@@ -75,49 +77,37 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           'Content-Type': 'application/json',
         },
         body: json.encode({
-          'video_id': widget.videoId.toString(), // String'e çeviriyoruz
+          'video_id': widget.videoId.toString(),
         }),
       );
 
-      print('📡 API Response Status: ${response.statusCode}');
-      print('📡 API Response Body: ${response.body}'); // Debug için ekleyin
+      print('API Response Status: ${response.statusCode}');
+      print('API Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('📊 Parsed Data: $data'); // Debug için ekleyin
 
         if (data['success'] == true) {
           setState(() {
             videoData = data['data'];
-            videoLink = data['data']['video_link'];
             videoType = data['data']['video_type'];
+
+            // TÜM video türleri için direkt URL kullan - manuel işlem kaldırıldı
+            videoLink = data['data']['video_link'].toString();
           });
 
-          print('🎥 Video Link: $videoLink');
-          print('🎥 Video Type: $videoType');
-          print('🎥 Video Data: $videoData'); // Debug için ekleyin
+          print('Video Link: $videoLink');
+          print('Video Type: $videoType');
 
-          // Video linkini aldıktan sonra player'ı başlat
           _initializePlayer();
         } else {
-          print('❌ API Success=false: ${data['message']}');
           setState(() {
             _hasError = true;
             _errorMessage = data['message'] ?? 'Video yüklenemedi';
             _isLoading = false;
           });
         }
-      } else if (response.statusCode == 422) {
-        // Validation error - detaylı hata mesajı
-        final data = json.decode(response.body);
-        print('❌ Validation Error: $data');
-        setState(() {
-          _hasError = true;
-          _errorMessage = 'Validation hatası: ${data['message'] ?? 'Geçersiz parametreler'}';
-          _isLoading = false;
-        });
       } else {
-        print('❌ HTTP Error: ${response.statusCode}');
         setState(() {
           _hasError = true;
           _errorMessage = 'Sunucu hatası: ${response.statusCode}';
@@ -125,7 +115,6 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         });
       }
     } catch (e) {
-      print('💥 Exception in fetchVideoDetails: $e');
       setState(() {
         _hasError = true;
         _errorMessage = 'Bağlantı hatası: $e';
@@ -133,10 +122,78 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       });
     }
   }
-  void _initializePlayer() async {
-    if (videoLink == null) return;
+  String _createSlug(String text) {
+    print('🔤 Original text: $text');
 
-    // YouTube videoları için external launcher
+    // Türkçe karakterleri İngilizce karşılıklarına çevir
+    final turkishMap = {
+      'ç': 'c', 'Ç': 'C',
+      'ğ': 'g', 'Ğ': 'G',
+      'ı': 'i', 'I': 'I',
+      'İ': 'i', 'i': 'i',
+      'ö': 'o', 'Ö': 'O',
+      'ş': 's', 'Ş': 'S',
+      'ü': 'u', 'Ü': 'U'
+    };
+
+    String result = text;
+    turkishMap.forEach((turkish, english) {
+      result = result.replaceAll(turkish, english);
+    });
+
+    print('🔤 After Turkish conversion: $result');
+
+    result = result
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9\s-]'), '') // Özel karakterleri kaldır
+        .replaceAll(RegExp(r'\s+'), '-') // Boşlukları tire ile değiştir
+        .replaceAll(RegExp(r'-+'), '-') // Birden fazla tireyi tek tire yap
+        .replaceAll(RegExp(r'^-|-$'), ''); // Başta ve sonda tire varsa kaldır
+
+    print('🔤 Final slug: $result');
+    return result;
+  }
+
+// VEYA daha basit bir çözüm - manuel slug:
+  String _createSlugManual(String text) {
+    // Manuel çeviriler
+    final conversions = {
+      'Bağlaçlar - Giriş': 'baglaclar-giris',
+      'bağlaçlar - giriş': 'baglaclar-giris',
+      'BAĞLAÇLAR - GİRİŞ': 'baglaclar-giris',
+    };
+
+    // Önce manuel çeviriyi kontrol et
+    if (conversions.containsKey(text)) {
+      return conversions[text]!;
+    }
+
+    // Yoksa otomatik çevir
+    return text
+        .toLowerCase()
+        .replaceAll('ğ', 'g')
+        .replaceAll('ç', 'c')
+        .replaceAll('ı', 'i')
+        .replaceAll('ş', 's')
+        .replaceAll('ü', 'u')
+        .replaceAll('ö', 'o')
+        .replaceAll(RegExp(r'[^a-z0-9\s-]'), '')
+        .replaceAll(RegExp(r'\s+'), '-')
+        .replaceAll(RegExp(r'-+'), '-')
+        .replaceAll(RegExp(r'^-|-$'), '');
+  }
+
+// _initializePlayer metodunu güncelleyin:
+  void _initializePlayer() async {
+    if (videoLink == null) {
+      setState(() {
+        _hasError = true;
+        _errorMessage = 'Video linki bulunamadı';
+        _isLoading = false;
+      });
+      return;
+    }
+
     if (videoType == 'youtube') {
       setState(() {
         _isLoading = false;
@@ -145,17 +202,43 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     }
 
     try {
-      print('🚀 Initializing video player with: $videoLink');
+      print('Initializing video player with: $videoLink');
+      print('Video type: $videoType');
+      print('Platform: ${Platform.isAndroid ? "Android" : "iOS"}');
 
-      // Video player controller oluştur
-      _videoPlayerController = VideoPlayerController.network(videoLink!);
+      // Android için özel header konfigürasyonu
+      Map<String, String> headers = {
+        'User-Agent': 'PHD-Akademi-App/1.0',
+        'Accept': '*/*',  // Daha genel accept header
+        'Accept-Encoding': 'identity',  // Compression sorunlarını önle
+      };
 
-      // Video'yu initialize et
-      await _videoPlayerController!.initialize();
+      // Android için ek headers
+      if (Platform.isAndroid) {
+        headers.addAll({
+          'Range': 'bytes=0-',  // Range request desteği
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
+        });
+      }
 
-      print('✅ Video controller initialized successfully');
+      _videoPlayerController = VideoPlayerController.network(
+        videoLink!,
+        httpHeaders: headers,
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: true,  // Android için ses karışımı
+          allowBackgroundPlayback: false,
+        ),
+      );
 
-      // Chewie controller oluştur
+      // Timeout ekle
+      await _videoPlayerController!.initialize().timeout(
+        Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Video yükleme zaman aşımı');
+        },
+      );
+
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
         autoPlay: false,
@@ -164,6 +247,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         allowFullScreen: !kIsWeb,
         allowMuting: true,
         showControls: true,
+        // Android için özel ayarlar
+        placeholder: Container(
+          color: Colors.black,
+          child: Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          ),
+        ),
         materialProgressColors: ChewieProgressColors(
           playedColor: Theme.of(context).primaryColor,
           handleColor: Theme.of(context).primaryColor,
@@ -171,51 +261,72 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
           bufferedColor: Colors.grey[300]!,
         ),
         errorBuilder: (context, errorMessage) {
-          print('🎬 Chewie Error: $errorMessage');
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, color: Colors.white, size: 64),
-                SizedBox(height: 16),
-                Text(
-                  'Video yüklenirken bir hata oluştu',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 8),
-                Text(
-                  errorMessage,
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => _launchInBrowser(videoLink!),
-                  child: Text('Tarayıcıda Aç'),
-                ),
-              ],
-            ),
-          );
+          print('Chewie Error: $errorMessage');
+          return _buildVideoError(errorMessage);
         },
       );
-
-      print('✅ Chewie controller created successfully');
 
       setState(() {
         _isLoading = false;
       });
 
     } catch (e) {
-      print('💥 Video player initialization error: $e');
+      print('Video player initialization error: $e');
       setState(() {
         _hasError = true;
-        _errorMessage = 'Video player başlatılamadı: $e';
+        _errorMessage = 'Video başlatılamadı: $e';
         _isLoading = false;
       });
     }
   }
-
+  Widget _buildVideoError(String errorMessage) {
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, color: Colors.white, size: 64),
+            SizedBox(height: 16),
+            Text(
+              'Video yüklenirken hata oluştu',
+              style: TextStyle(color: Colors.white, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 8),
+            if (kDebugMode) ...[
+              Text(
+                'Error: $errorMessage',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+              Text(
+                'Video Link: $videoLink',
+                style: TextStyle(color: Colors.grey, fontSize: 10),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton(
+                  onPressed: _fetchVideoDetails,
+                  child: Text('Tekrar Dene'),
+                ),
+                SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: () => _launchInBrowser(videoLink!),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                  child: Text('Tarayıcıda Aç'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
   Future<void> _launchInBrowser(String url) async {
     try {
       final Uri uri = Uri.parse(url);
@@ -366,6 +477,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
   }
 
+// _buildVideoPlayer metodunu güncelleyin:
   Widget _buildVideoPlayer() {
     // YouTube videoları
     if (videoType == 'youtube') {
@@ -396,7 +508,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       );
     }
 
-    // Normal videolar için Chewie
+    // Tüm diğer videolar (legacy, upload) için Chewie player
     if (_chewieController != null &&
         _videoPlayerController != null &&
         _videoPlayerController!.value.isInitialized) {
@@ -410,9 +522,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         child: CircularProgressIndicator(color: Colors.white),
       ),
     );
-  }
-
-  Widget _buildVideoInfo(ThemeData theme, bool isDark) {
+  }  Widget _buildVideoInfo(ThemeData theme, bool isDark) {
     if (videoData == null) return SizedBox.shrink();
 
     final video = videoData!['video'];

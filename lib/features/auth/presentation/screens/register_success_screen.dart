@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'login_screen.dart';
+import '../../../dashboard/dashboard_screen.dart';
 
 class RegisterSuccessScreen extends StatefulWidget {
   final Function(ThemeMode)? onThemeChanged;
@@ -27,12 +28,16 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
   late AnimationController _contentController;
   late AnimationController _buttonController;
   late AnimationController _floatingController;
+  late AnimationController _countdownController;
+
+  int _countdown = 3;
 
   @override
   void initState() {
     super.initState();
     _initAnimations();
     _startAnimations();
+    _startCountdown();
   }
 
   void _initAnimations() {
@@ -52,6 +57,10 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
       duration: const Duration(milliseconds: 3000),
       vsync: this,
     );
+    _countdownController = AnimationController(
+      duration: const Duration(milliseconds: 1000),
+      vsync: this,
+    );
   }
 
   void _startAnimations() {
@@ -67,12 +76,34 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
     });
   }
 
+  void _startCountdown() {
+    Future.delayed(const Duration(seconds: 1), () {
+      if (mounted) {
+        _countdownController.forward().then((_) {
+          if (mounted) {
+            setState(() {
+              _countdown--;
+            });
+            _countdownController.reset();
+
+            if (_countdown > 0) {
+              _startCountdown();
+            } else {
+              _navigateToDashboard();
+            }
+          }
+        });
+      }
+    });
+  }
+
   @override
   void dispose() {
     _logoController.dispose();
     _contentController.dispose();
     _buttonController.dispose();
     _floatingController.dispose();
+    _countdownController.dispose();
     super.dispose();
   }
 
@@ -90,6 +121,36 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
     if (_isMobile(context)) return double.infinity;
     if (_isTablet(context)) return 600;
     return 550;
+  }
+
+  void _navigateToDashboard() {
+    // Dashboard sayfasına yönlendirme - dashboard sayfanızı buraya ekleyin
+    // Örnek: DashboardScreen() yerine kendi dashboard sayfanızı kullanın
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (context, animation, _) => LoginScreen( // DashboardScreen ile değiştirin
+          currentThemeMode: widget.currentThemeMode,
+          onThemeChanged: widget.onThemeChanged,
+        ),
+        transitionDuration: const Duration(milliseconds: 1000),
+        transitionsBuilder: (context, animation, _, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.0, 0.1),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+              )),
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _navigateToLogin() {
@@ -162,6 +223,8 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
                     _buildSuccessTexts(theme),
                     SizedBox(height: _isMobile(context) ? 24 : 32),
                     _buildInfoCards(theme, isDark),
+                    SizedBox(height: _isMobile(context) ? 16 : 20),
+                    _buildCountdownInfo(theme, isDark),
                     SizedBox(height: _isMobile(context) ? 24 : 32),
                     _buildActionButtons(theme, isDark),
                   ],
@@ -283,42 +346,19 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
           offset: Offset(0, 30 * (1 - _contentController.value)),
           child: Opacity(
             opacity: _contentController.value,
-            child: Column(
-              children: [
-                // SMS ve Öğretmen kartları yan yana
-                Row(
-                  children: [
-                    Expanded(child: _buildInfoCard(
-                      isDark,
-                      Icons.sms_rounded,
-                      'SMS Bildirimi',
-                      'Onaylandığında SMS alacaksınız',
-                      const Color(0xFF3B82F6),
-                    )),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildInfoCard(
-                      isDark,
-                      Icons.school_rounded,
-                      'Öğretmen Onayı',
-                      widget.teacherName != null
-                          ? '${widget.teacherName} onayı bekliyor'
-                          : 'Öğretmen onayı bekleniyor',
-                      const Color(0xFF8B5CF6),
-                    )),
-                  ],
-                ),
-
-                const SizedBox(height: 12),
-
-                // Süreç kartı tek başına
-                _buildInfoCard(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: 300),
+                child: _buildInfoCard(
                   isDark,
-                  Icons.access_time_rounded,
-                  'Bekleme Süreci',
-                  'Onay süreci genellikle 24 saat içerisinde tamamlanır',
-                  const Color(0xFFF59E0B),
+                  Icons.school_rounded,
+                  'Öğretmen Onayı',
+                  widget.teacherName != null
+                      ? '${widget.teacherName} onayı bekliyor'
+                      : 'Öğretmen onayı bekleniyor',
+                  const Color(0xFF8B5CF6),
                 ),
-              ],
+              ),
             ),
           ),
         );
@@ -328,7 +368,7 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
 
   Widget _buildInfoCard(bool isDark, IconData icon, String title, String subtitle, Color color) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: isDark
             ? color.withOpacity(0.15)
@@ -348,7 +388,7 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: color.withOpacity(0.2),
               borderRadius: BorderRadius.circular(12),
@@ -356,31 +396,86 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
             child: Icon(
               icon,
               color: color,
-              size: 20,
+              size: 24,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
             title,
             style: TextStyle(
               fontWeight: FontWeight.bold,
               color: color,
-              fontSize: 13,
+              fontSize: 16,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             subtitle,
             style: TextStyle(
               color: Colors.grey[600],
-              fontSize: 11,
+              fontSize: 13,
               height: 1.3,
             ),
             textAlign: TextAlign.center,
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCountdownInfo(ThemeData theme, bool isDark) {
+    return AnimatedBuilder(
+      animation: _countdownController,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: 1.0 + (0.1 * _countdownController.value),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? const Color(0xFF10B981).withOpacity(0.15)
+                  : const Color(0xFF10B981).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: const Color(0xFF10B981).withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$_countdown',
+                    style: const TextStyle(
+                      color: Color(0xFF10B981),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'saniye sonra giriş sayfasına yönlendirileceksiniz, giriş yapıp adımları izleyebilirsiniz.',
+                    style: TextStyle(
+                      color: const Color(0xFF10B981),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -434,7 +529,7 @@ class _RegisterSuccessScreenState extends State<RegisterSuccessScreen>
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Giriş Sayfasına Git',
+                          'Şimdi Giriş Yap',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,

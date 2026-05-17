@@ -1,6 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../../../../core/utils/snackbar_utils.dart';
+import '../../../auth/domain/entities/user_entity.dart';
 import '../../data/repositories/roadmap_repository.dart';
 import '../../data/models/roadmap_category.dart';
 import '../../data/models/roadmap_step.dart';
@@ -14,10 +20,13 @@ class RoadmapScreen extends StatefulWidget {
 class _RoadmapScreenState extends State<RoadmapScreen>
     with TickerProviderStateMixin {
   bool _isLoading = true;
+  bool _isUserLoading = true;
+
   List<RoadmapCategory> _categories = [];
   late AnimationController _fadeController;
   late AnimationController _slideController;
   final RoadmapRepository _repository = RoadmapRepository();
+  UserEntity? _currentUser; // User bilgisi için
 
   @override
   void initState() {
@@ -69,6 +78,44 @@ class _RoadmapScreenState extends State<RoadmapScreen>
       debugPrint('========================');
     } finally {
       setState(() => _isLoading = false);
+    }
+  }
+  Future<void> _loadUserData() async {
+    setState(() => _isUserLoading = true);
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+
+      if (token == null) {
+        setState(() {
+          _currentUser = null;
+          _isUserLoading = false;
+        });
+        return;
+      }
+
+      final response = await http.get(
+        Uri.parse('${ApiConstants.baseUrl}/me'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            _currentUser = UserEntity.fromJson(data['data']);
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('User load error: $e');
+      setState(() => _currentUser = null);
+    } finally {
+      setState(() => _isUserLoading = false);
     }
   }
 
@@ -707,6 +754,35 @@ class _RoadmapScreenState extends State<RoadmapScreen>
   }
 
   void _showCategoryDetails(RoadmapCategory category) {
+    final hasAccess = _currentUser?.hasActivePackage ?? true;
+
+    if (!hasAccess) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: Text('Önizleme Modu'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 48, color: Colors.orange),
+                SizedBox(height: 16),
+                Text('Yol haritasını inceleyebilirsiniz.\nDetaylı etkileşim için ödeme gerekiyor.'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Tamam'),
+              ),
+            ],
+          );
+        },
+      );
+      return;
+    }
+
+    // Normal detay ekranına git
     Navigator.push(
       context,
       MaterialPageRoute(
